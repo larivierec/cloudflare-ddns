@@ -2,74 +2,120 @@ package ddns
 
 import (
 	"context"
+	"fmt"
 	"log"
+	"net"
+	"net/http"
 	"os"
+	"time"
 
-	"github.com/cloudflare/cloudflare-go"
+	"github.com/gorilla/mux"
 	"github.com/larivierec/cloudflare-ddns/pkg/api"
 	"github.com/larivierec/cloudflare-ddns/pkg/ipify"
+	"github.com/thecodeteam/goodbye"
 )
 
 var (
 	cachedIpInfo ipify.IpInfo
-	creds        api.CloudflareCredentials
+	server       = http.Server{}
 )
 
+type HealthHandler struct{}
+type RestartHandler struct{}
+
+func (handle *HealthHandler) alive(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusOK)
+}
+
+func (handle *HealthHandler) ready(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusOK)
+}
+
 func Start() {
-	creds.ApiKey = os.Getenv("API_KEY")
-	creds.AccountEmail = os.Getenv("ACCOUNT_EMAIL")
-	creds.CloudflareToken = os.Getenv("ACCOUNT_TOKEN")
+	creds := api.CloudflareCredentials{
+		ApiKey:          os.Getenv("API_KEY"),
+		AccountEmail:    os.Getenv("ACCOUNT_EMAIL"),
+		CloudflareToken: os.Getenv("ACCOUNT_TOKEN"),
+	}
 	zoneName := os.Args[2]
 	recordName := os.Args[3]
-
-	ipifyResult, err := ipify.GetCurrentIP()
+	err := api.InitializeAPI(&creds)
 
 	if err != nil {
 		log.Fatalf("Unable to get ipify ip, aborting.")
 	}
 
+	ticker := time.NewTicker(3 * time.Minute)
+	quit := make(chan struct{})
+	go func() {
+		for {
+			select {
+			case <-ticker.C:
+				update(zoneName, recordName)
+			case <-quit:
+				ticker.Stop()
+				return
+			}
+		}
+	}()
+
+	log.Println("Starting http server")
+	startHttpServer()
+}
+
+func startHttpServer() {
+	health := new(HealthHandler)
+	mainRouter := mux.NewRouter()
+	healthRouter := mainRouter.PathPrefix("/health").Subrouter()
+	healthRouter.HandleFunc("/ready", health.ready).Methods(http.MethodGet)
+	healthRouter.HandleFunc("/alive", health.alive).Methods(http.MethodGet)
+	server.Handler = mainRouter
+	listener, err := net.Listen("tcp", "0.0.0.0:8080")
+
+	if err != nil {
+		log.Fatalf("unable to start http server %v", err.Error())
+	}
+
+	err = server.Serve(listener)
+	if err != nil {
+		log.Fatalf("unable to serve %v", err.Error())
+	}
+
+	WaitForCtrlC()
+}
+
+func update(zoneName string, recordName string) {
+	ipifyResult, err := ipify.GetCurrentIP()
+
 	if cachedIpInfo.Ip != ipifyResult.Ip {
 		cachedIpInfo.Ip = ipifyResult.Ip
-		var cloudflareRecord cloudflare.DNSRecord
-		apiObj, err := api.CloudflareApi(creds)
 
 		if err != nil {
 			log.Fatalf("unable to initialize cloudflare api")
 		}
-
-		zoneId, err := apiObj.ZoneIDByName(zoneName)
+		record, zoneId, err := api.ListDNSRecordsFiltered(zoneName, recordName)
 		if err != nil {
-			log.Fatalf("unable to get zone by name %s", zoneName)
-		}
-		records, _, err := apiObj.ListDNSRecords(context.TODO(), cloudflare.ZoneIdentifier(zoneId), cloudflare.ListDNSRecordsParams{})
-		if err != nil {
-			log.Fatalf("unable to list dns records for domain %s", recordName)
+			log.Println(fmt.Errorf("unable to filter for %s. err: %s", recordName, err))
 		}
 
-		for _, record := range records {
-			if record.Name == recordName && record.Type == "A" {
-				cloudflareRecord = record
-				break
-			}
-		}
-
-		if cachedIpInfo.Ip != cloudflareRecord.Content {
-			err = apiObj.UpdateDNSRecord(context.TODO(), cloudflare.ZoneIdentifier(zoneId), cloudflare.UpdateDNSRecordParams{
-				Type:     cloudflareRecord.Type,
-				Name:     cloudflareRecord.Name,
-				ID:       cloudflareRecord.ID,
-				Proxied:  cloudflareRecord.Proxied,
-				Priority: cloudflareRecord.Priority,
-				TTL:      cloudflareRecord.TTL,
-				Content:  ipifyResult.Ip,
-			})
-
+		if cachedIpInfo.Ip != record.Content {
+			err = api.UpdateDNSRecord(ipifyResult.Ip, zoneId, record)
 			if err != nil {
-				log.Println("unable to update dns record")
+				log.Println(fmt.Errorf("unable to update record %s. err : %s", recordName, err))
 			}
-			log.Printf("record updated successfully %s\n", err)
 		}
 	} else {
 		log.Println("IPs are the same")
 	}
+}
+
+func WaitForCtrlC() {
+	done := make(chan bool, 1)
+
+	goodbye.RegisterWithPriority(func(ctx context.Context, s os.Signal) {
+		server.Shutdown(ctx)
+		done <- true
+	}, 999)
+
+	<-done
 }

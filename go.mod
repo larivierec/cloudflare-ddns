@@ -4,6 +4,8 @@ go 1.20
 
 require (
 	github.com/cloudflare/cloudflare-go v0.62.0
+	github.com/gorilla/mux v1.8.0
+	github.com/thecodeteam/goodbye v0.0.0-20170927022442-a83968bda2d3
 	gotest.tools/v3 v3.4.0
 )
 
