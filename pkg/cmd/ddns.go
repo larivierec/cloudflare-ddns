@@ -49,7 +49,7 @@ func Start() {
 	err := api.InitializeAPI(&creds)
 
 	if err != nil {
-		log.Fatalf("Unable to get ipify ip, aborting.")
+		log.Fatalf("unable to initialize cloudflare api")
 	}
 
 	ticker := time.NewTicker(3 * time.Minute)
@@ -93,13 +93,11 @@ func startHttpServer() {
 
 func update(zoneName string, recordName string) {
 	ipifyResult, err := ipify.GetCurrentIP()
-
+	if err != nil {
+		log.Fatalf("Unable to get ipify ip, aborting.")
+	}
 	if cachedIpInfo.Ip != ipifyResult.Ip {
 		cachedIpInfo.Ip = ipifyResult.Ip
-
-		if err != nil {
-			log.Fatalf("unable to initialize cloudflare api")
-		}
 		record, zoneId, err := api.ListDNSRecordsFiltered(zoneName, recordName)
 		if err != nil {
 			log.Println(fmt.Errorf("unable to filter for %s. err: %s", recordName, err))
