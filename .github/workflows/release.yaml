@@ -42,4 +42,4 @@ jobs:
         push: true
         tags: |
           ghcr.io/${{ github.repository_owner }}/cloudflare-ddns:latest
-          ghcr.io/${{ github.repository_owner }}/cloudflare-ddns:${{ steps.prep.outputs.VERSION }}/cloudflare-ddns:$
+          ghcr.io/${{ github.repository_owner }}/cloudflare-ddns:${{ steps.prep.outputs.VERSION }}

@@ -12,6 +12,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/larivierec/cloudflare-ddns/pkg/api"
 	"github.com/larivierec/cloudflare-ddns/pkg/ipify"
+	"github.com/spf13/pflag"
 	"github.com/thecodeteam/goodbye"
 )
 
@@ -37,8 +38,14 @@ func Start() {
 		AccountEmail:    os.Getenv("ACCOUNT_EMAIL"),
 		CloudflareToken: os.Getenv("ACCOUNT_TOKEN"),
 	}
-	zoneName := os.Args[2]
-	recordName := os.Args[3]
+
+	var zoneName string
+	var recordName string
+
+	pflag.StringVar(&zoneName, "zone-name", "", "set this to the cloudflare zone name")
+	pflag.StringVar(&recordName, "record-name", "", "set this to the cloudflare record in which you want to compare")
+	pflag.Parse()
+
 	err := api.InitializeAPI(&creds)
 
 	if err != nil {
