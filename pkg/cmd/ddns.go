@@ -57,7 +57,10 @@ func Start() {
 		for {
 			select {
 			case <-ticker.C:
-				update(zoneName, recordName)
+				err := update(zoneName, recordName)
+				if err != nil {
+					log.Println(err)
+				}
 			case <-quit:
 				ticker.Stop()
 				return
@@ -89,27 +92,28 @@ func startHttpServer() {
 	stopServer()
 }
 
-func update(zoneName string, recordName string) {
+func update(zoneName string, recordName string) error {
 	ipifyResult, err := ipify.GetCurrentIP()
 	if err != nil {
-		log.Fatalf("Unable to get ipify ip, aborting.")
+		return fmt.Errorf("unable to get ipify ip, skipping update. error: %v", err)
 	}
 	if cachedIpInfo.Ip != ipifyResult.Ip {
 		cachedIpInfo.Ip = ipifyResult.Ip
 		record, zoneId, err := api.ListDNSRecordsFiltered(zoneName, recordName)
 		if err != nil {
-			log.Println(fmt.Errorf("unable to filter for %s. err: %s", recordName, err))
+			return fmt.Errorf("unable to filter for %s. err: %s", recordName, err)
 		}
 
 		if cachedIpInfo.Ip != record.Content {
 			err = api.UpdateDNSRecord(ipifyResult.Ip, zoneId, record)
 			if err != nil {
-				log.Println(fmt.Errorf("unable to update record %s. err : %s", recordName, err))
+				return fmt.Errorf("unable to update record %s. err : %s", recordName, err)
 			}
 		}
 	} else {
 		log.Println("IPs are the same")
 	}
+	return nil
 }
 
 func stopServer() {
