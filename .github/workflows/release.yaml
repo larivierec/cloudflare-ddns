@@ -25,6 +25,33 @@ jobs:
         install: true
         version: latest
         driver-opts: image=moby/buildkit:latest
+    - name: build local container
+      uses: docker/build-push-action@v2
+      with:
+        tags: localbuild/cloudflare-ddns:latest
+        push: false
+        load: true
+    - name: Scan image
+      id: scan
+      uses: anchore/scan-action@v3
+      with:
+        image: localbuild/cloudflare-ddns:latest
+        fail-build: true
+        severity-cutoff: critical
+        acs-report-enable: true
+    - name: Create SBOM
+      uses: anchore/sbom-action@v0
+      with:
+        format: spdx-json
+        output-file: "${{ github.event.repository.name }}-sbom.spdx.json"
+    - name: Scan SBOM
+      uses: anchore/scan-action@v3
+      with:
+        sbom: "${{ github.event.repository.name }}-sbom.spdx.json"
+    - name: Upload Anchore scan SARIF report
+      uses: github/codeql-action/upload-sarif@v2
+      with:
+        sarif_file: ${{ steps.scan.outputs.sarif }}
     - name: Login to GitHub Container Registry
       if: github.event_name != 'pull_request'
       uses: docker/login-action@v2
