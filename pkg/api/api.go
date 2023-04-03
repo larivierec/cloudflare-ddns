@@ -47,7 +47,7 @@ func ListDNSRecordsFiltered(zoneName string, wantedRecordName string) (cloudflar
 }
 
 func UpdateDNSRecord(ipifyResult string, zoneId string, record cloudflare.DNSRecord) error {
-	err := cfApi.UpdateDNSRecord(context.TODO(), cloudflare.ZoneIdentifier(zoneId), cloudflare.UpdateDNSRecordParams{
+	record, err := cfApi.UpdateDNSRecord(context.TODO(), cloudflare.ZoneIdentifier(zoneId), cloudflare.UpdateDNSRecordParams{
 		Type:     record.Type,
 		Name:     record.Name,
 		ID:       record.ID,
@@ -60,6 +60,6 @@ func UpdateDNSRecord(ipifyResult string, zoneId string, record cloudflare.DNSRec
 	if err != nil {
 		log.Println("unable to update dns record")
 	}
-	log.Printf("record updated successfully\n")
+	log.Printf("record %s updated successfully\n", record.Name)
 	return err
 }
