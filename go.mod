@@ -3,7 +3,7 @@ module github.com/larivierec/cloudflare-ddns
 go 1.20
 
 require (
-	github.com/cloudflare/cloudflare-go v0.65.0
+	github.com/cloudflare/cloudflare-go v0.66.0
 	github.com/spf13/pflag v1.0.5
 	gotest.tools/v3 v3.4.0
 )
