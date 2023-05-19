@@ -17,11 +17,15 @@ import (
 
 var (
 	cachedIpInfo ipify.IpInfo
-	server       = http.Server{}
+	healthServer       = http.Server{}
+	trafficServer       = http.Server{}
+	quit = make(chan bool)
+	done = make(chan os.Signal, 1)
 )
 
 type HealthHandler struct{}
 type RestartHandler struct{}
+type ExternalHandler struct{}
 
 func (handle *HealthHandler) alive(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
@@ -29,6 +33,19 @@ func (handle *HealthHandler) alive(w http.ResponseWriter, r *http.Request) {
 
 func (handle *HealthHandler) ready(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
+}
+
+func (handle *RestartHandler) do(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusAccepted)
+	done <- syscall.SIGTERM
+}
+
+func (handle *ExternalHandler) get(w http.ResponseWriter, r *http.Request) {
+	if cachedIpInfo.Ip == "" {
+		cachedIpInfo, _ = ipify.GetCurrentIP()
+	}
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(cachedIpInfo.Ip))
 }
 
 func Start() {
@@ -52,7 +69,6 @@ func Start() {
 	}
 
 	ticker := time.NewTicker(3 * time.Minute)
-	quit := make(chan struct{})
 	go func() {
 		for {
 			select {
@@ -73,20 +89,35 @@ func Start() {
 
 func startHttpServer() {
 	health := new(HealthHandler)
-	mainRouter := http.NewServeMux()
-	mainRouter.HandleFunc("/health/ready", health.ready)
-	mainRouter.HandleFunc("/health/alive", health.alive)
-	server.Handler = mainRouter
-	server.Addr = ":8080"
+	restart := new(RestartHandler)
+	ddnsApi := new(ExternalHandler)
+	healthRouter := http.NewServeMux()
+	trafficRouter := http.NewServeMux()
 
-	done := make(chan os.Signal, 1)
+	healthRouter.HandleFunc("/health/ready", health.ready)
+	healthRouter.HandleFunc("/health/alive", health.alive)
+	trafficRouter.HandleFunc("/v1/restart", restart.do)
+	trafficRouter.HandleFunc("/v1/get", ddnsApi.get)
+
+	healthServer.Handler = healthRouter
+	healthServer.Addr = ":8080"
+	trafficServer.Handler = trafficRouter
+	trafficServer.Addr = ":9000"
+
 	signal.Notify(done, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
 
 	go func() {
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("listen: %s\n", err)
+		if err := healthServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("listen health server: %s\n", err)
 		}
 	}()
+
+	go func() {
+		if err := trafficServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("listen traffic server: %s\n", err)
+		}
+	}()
+
 	log.Println("server started")
 	<-done
 	stopServer()
@@ -122,8 +153,12 @@ func stopServer() {
 		cancel()
 	}()
 
-	if err := server.Shutdown(ctx); err != nil {
-		log.Fatalf("server unable to shutdown: %v", err)
+	if err := healthServer.Shutdown(ctx); err != nil {
+		log.Fatalf("health server unable to shutdown: %v", err)
 	}
-	log.Println("server stopped gracefully")
+
+	if err := trafficServer.Shutdown(ctx); err != nil {
+		log.Fatalf("traffic server unable to shutdown: %v", err)
+	}
+	log.Println("servers stopped gracefully")
 }
