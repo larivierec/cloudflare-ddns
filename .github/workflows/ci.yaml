@@ -15,57 +15,57 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout
-      uses: actions/checkout@v3
+      uses: actions/checkout@c85c95e3d7251135ab7dc9ce3241c5835cc595a9 # v3
     - name: Prepare
       id: prep
       run: |
         echo "VERSION=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
     - name: Set up QEMU
-      uses: docker/setup-qemu-action@v2
+      uses: docker/setup-qemu-action@2b82ce82d56a2a04d2637cd93a637ae1b359c0a7 # v2
     - name: Set up Docker Buildx
       id: buildx
-      uses: docker/setup-buildx-action@v2
+      uses: docker/setup-buildx-action@4c0219f9ac95b02789c1075625400b2acbff50b1 # v2
       with:
         install: true
         version: latest
         driver-opts: image=moby/buildkit:latest
     - name: Build local image for scan and sbom
-      uses: docker/build-push-action@v2
+      uses: docker/build-push-action@ac9327eae2b366085ac7f6a2d02df8aa8ead720a # v2
       with:
         tags: localbuild/cloudflare-ddns:latest
         push: false
         load: true
     - name: Scan image
       id: scan
-      uses: anchore/scan-action@v3
+      uses: anchore/scan-action@24fd7c9060f3c96848dd1929fac8d796fb5ae4b4 # v3
       with:
         image: localbuild/cloudflare-ddns:latest
         fail-build: true
         severity-cutoff: critical
         acs-report-enable: true
     - name: Create SBOM
-      uses: anchore/sbom-action@v0
+      uses: anchore/sbom-action@78fc58e266e87a38d4194b2137a3d4e9bcaf7ca1 # v0
       with:
         format: spdx-json
         output-file: "${{ github.event.repository.name }}-sbom.spdx.json"
     - name: Scan SBOM
-      uses: anchore/scan-action@v3
+      uses: anchore/scan-action@24fd7c9060f3c96848dd1929fac8d796fb5ae4b4 # v3
       with:
         sbom: "${{ github.event.repository.name }}-sbom.spdx.json"
     - name: Upload Anchore scan SARIF report
-      uses: github/codeql-action/upload-sarif@v2
+      uses: github/codeql-action/upload-sarif@6ca1aa8c195c3ca3e77c174fe0356db1bce3b319 # v2
       with:
         sarif_file: ${{ steps.scan.outputs.sarif }}
     - name: Login to GitHub Container Registry
       if: github.event_name != 'pull_request'
-      uses: docker/login-action@v2
+      uses: docker/login-action@465a07811f14bebb1938fbed4728c6a1ff8901fc # v2
       with:
         registry: ghcr.io
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
     - name: Build and Push
       if: github.event_name != 'pull_request'
-      uses: docker/build-push-action@v4
+      uses: docker/build-push-action@2eb1c1961a95fc15694676618e422e8ba1d63825 # v4
       with:
         context: .
         file: ./Dockerfile
