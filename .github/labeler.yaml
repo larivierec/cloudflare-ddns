@@ -1,0 +1,9 @@
+---
+area/ci:
+  - ".github/**/*"
+area/go:
+  - "cmd/**"
+  - "pkg/**"
+  - "go.mod"
+  - "go.sum"
+
