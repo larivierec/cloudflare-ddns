@@ -1,4 +1,4 @@
-FROM golang:1.21-alpine AS build
+FROM golang:1.21.1-alpine AS build
 
 ARG TARGETOS
 ARG TARGETARCH
