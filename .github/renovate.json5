@@ -9,7 +9,8 @@
     ":automergeDigest",
     ":automergeMinor",
     ":label(renovate/{{depName}})",
-    "helpers:pinGitHubActionDigests"
+    "helpers:pinGitHubActionDigests",
+    "security:openssf-scorecard"
   ],
   "dependencyDashboard": true,
   "dependencyDashboardTitle": "Renovate Dashboard 🤖",
