@@ -1,6 +1,6 @@
 module github.com/larivierec/cloudflare-ddns
 
-go 1.20
+go 1.21
 
 require (
 	github.com/cloudflare/cloudflare-go v0.83.0
