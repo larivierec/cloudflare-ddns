@@ -46,7 +46,7 @@ func ListDNSRecordsFiltered(zoneName string, wantedRecordName string) (cloudflar
 	return cloudflare.DNSRecord{}, "", fmt.Errorf("record %s not found", wantedRecordName)
 }
 
-func UpdateDNSRecord(ipifyResult string, zoneId string, record cloudflare.DNSRecord) error {
+func UpdateDNSRecord(result string, zoneId string, record cloudflare.DNSRecord) error {
 	record, err := cfApi.UpdateDNSRecord(context.TODO(), cloudflare.ZoneIdentifier(zoneId), cloudflare.UpdateDNSRecordParams{
 		Type:     record.Type,
 		Name:     record.Name,
@@ -54,7 +54,7 @@ func UpdateDNSRecord(ipifyResult string, zoneId string, record cloudflare.DNSRec
 		Proxied:  record.Proxied,
 		Priority: record.Priority,
 		TTL:      record.TTL,
-		Content:  ipifyResult,
+		Content:  result,
 	})
 
 	if err != nil {

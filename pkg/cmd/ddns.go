@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"math/rand"
 	"net/http"
 	"os"
 	"os/signal"
@@ -11,16 +12,20 @@ import (
 	"time"
 
 	"github.com/larivierec/cloudflare-ddns/pkg/api"
-	"github.com/larivierec/cloudflare-ddns/pkg/ipify"
+	"github.com/larivierec/cloudflare-ddns/pkg/ip"
+	"github.com/larivierec/cloudflare-ddns/pkg/provider"
+
 	"github.com/spf13/pflag"
 )
 
 var (
-	cachedIpInfo ipify.IpInfo
-	healthServer       = http.Server{}
-	trafficServer       = http.Server{}
-	quit = make(chan bool)
-	done = make(chan os.Signal, 1)
+	cachedIpInfo  = ""
+	healthServer  = http.Server{}
+	trafficServer = http.Server{}
+	quit          = make(chan bool)
+	done          = make(chan os.Signal, 1)
+	providerName  = "ipify"
+	providers     = []api.Interface{}
 )
 
 type HealthHandler struct{}
@@ -41,11 +46,11 @@ func (handle *RestartHandler) do(w http.ResponseWriter, r *http.Request) {
 }
 
 func (handle *ExternalHandler) get(w http.ResponseWriter, r *http.Request) {
-	if cachedIpInfo.Ip == "" {
-		cachedIpInfo, _ = ipify.GetCurrentIP()
+	if cachedIpInfo == "" {
+		cachedIpInfo, _ = provider.GetCurrentIP(*getProvider(providerName))
 	}
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(cachedIpInfo.Ip))
+	w.Write([]byte(cachedIpInfo))
 }
 
 func Start() {
@@ -60,9 +65,11 @@ func Start() {
 
 	pflag.StringVar(&zoneName, "zone-name", "", "set this to the cloudflare zone name")
 	pflag.StringVar(&recordName, "record-name", "", "set this to the cloudflare record in which you want to compare")
+	pflag.StringVar(&providerName, "provider", "ipify", "set this to the ip provider that will be queried for your public ip address.")
 	pflag.Parse()
 
 	err := api.InitializeAPI(&creds)
+	createProvider()
 
 	if err != nil {
 		log.Fatalf("unable to initialize cloudflare api")
@@ -124,19 +131,19 @@ func startHttpServer() {
 }
 
 func update(zoneName string, recordName string) error {
-	ipifyResult, err := ipify.GetCurrentIP()
+	result, err := provider.GetCurrentIP(*getProvider(providerName))
 	if err != nil {
-		return fmt.Errorf("unable to get ipify ip, skipping update. error: %v", err)
+		return fmt.Errorf("unable to get provider ip, skipping update. error: %v", err)
 	}
-	if cachedIpInfo.Ip != ipifyResult.Ip {
-		cachedIpInfo.Ip = ipifyResult.Ip
+	if cachedIpInfo != result {
+		cachedIpInfo = result
 		record, zoneId, err := api.ListDNSRecordsFiltered(zoneName, recordName)
 		if err != nil {
 			return fmt.Errorf("unable to filter for %s. err: %s", recordName, err)
 		}
 
-		if cachedIpInfo.Ip != record.Content {
-			err = api.UpdateDNSRecord(ipifyResult.Ip, zoneId, record)
+		if cachedIpInfo != record.Content {
+			err = api.UpdateDNSRecord(result, zoneId, record)
 			if err != nil {
 				return fmt.Errorf("unable to update record %s. err : %s", recordName, err)
 			}
@@ -161,4 +168,29 @@ func stopServer() {
 		log.Fatalf("traffic server unable to shutdown: %v", err)
 	}
 	log.Println("servers stopped gracefully")
+}
+
+func createProvider() {
+	switch providerName {
+	case "ipify":
+		providers = append(providers, &ip.Ipify{})
+	case "icanhazip":
+	case "icanhaz":
+		providers = append(providers, &ip.ICanHazIp{})
+	case "random":
+		providers = append(providers, &ip.Ipify{})
+		providers = append(providers, &ip.ICanHazIp{})
+	default:
+		providerName = "random"
+		providers = append(providers, &ip.Ipify{})
+		providers = append(providers, &ip.ICanHazIp{})
+	}
+}
+
+func getProvider(typeName string) *api.Interface {
+	if typeName != "random" {
+		return &providers[0]
+	} else {
+		return &providers[rand.Intn(len(providers))]
+	}
 }
