@@ -4,7 +4,11 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+
+	"github.com/larivierec/cloudflare-ddns/pkg/metrics"
 )
+
+const ipifyString = "ipify"
 
 type Ipify struct {
 	BaseUrl string
@@ -16,6 +20,10 @@ type IpInfo struct {
 
 func (i *Ipify) setup() {
 	i.BaseUrl = "https://api64.ipify.org?format=json"
+}
+
+func (i *Ipify) GetProviderName() string {
+	return ipifyString
 }
 
 func (i *Ipify) GetCurrentIP() (string, error) {
@@ -30,7 +38,7 @@ func (i *Ipify) GetCurrentIP() (string, error) {
 	if err != nil {
 		return "", err
 	}
-
+	metrics.IncrementProvider(i)
 	err = json.Unmarshal(body, &ipInfo)
 	return ipInfo.Ip, err
 }

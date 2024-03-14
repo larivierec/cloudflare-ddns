@@ -13,7 +13,9 @@ import (
 
 	"github.com/larivierec/cloudflare-ddns/pkg/api"
 	"github.com/larivierec/cloudflare-ddns/pkg/ip"
+	"github.com/larivierec/cloudflare-ddns/pkg/metrics"
 	"github.com/larivierec/cloudflare-ddns/pkg/provider"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/spf13/pflag"
 )
@@ -33,19 +35,23 @@ type RestartHandler struct{}
 type ExternalHandler struct{}
 
 func (handle *HealthHandler) alive(w http.ResponseWriter, r *http.Request) {
+	metrics.IncrementReqs(r)
 	w.WriteHeader(http.StatusOK)
 }
 
 func (handle *HealthHandler) ready(w http.ResponseWriter, r *http.Request) {
+	metrics.IncrementReqs(r)
 	w.WriteHeader(http.StatusOK)
 }
 
 func (handle *RestartHandler) do(w http.ResponseWriter, r *http.Request) {
+	metrics.IncrementReqs(r)
 	w.WriteHeader(http.StatusAccepted)
 	done <- syscall.SIGTERM
 }
 
 func (handle *ExternalHandler) get(w http.ResponseWriter, r *http.Request) {
+	metrics.IncrementReqs(r)
 	if cachedIpInfo == "" {
 		cachedIpInfo, _ = provider.GetCurrentIP(*getProvider(providerName))
 	}
@@ -63,13 +69,14 @@ func Start() {
 	var zoneName string
 	var recordName string
 
-	pflag.StringVar(&zoneName, "zone-name", "", "set this to the cloudflare zone name")
-	pflag.StringVar(&recordName, "record-name", "", "set this to the cloudflare record in which you want to compare")
+	pflag.StringVar(&zoneName, "zone-name", "", "set this to the cloudflare zone name.")
+	pflag.StringVar(&recordName, "record-name", "", "set this to the cloudflare record in which you want to compare.")
 	pflag.StringVar(&providerName, "provider", "ipify", "set this to the ip provider that will be queried for your public ip address.")
 	pflag.Parse()
 
 	err := api.InitializeAPI(&creds)
 	createProvider()
+	metrics.InitMetrics()
 
 	if err != nil {
 		log.Fatalf("unable to initialize cloudflare api")
@@ -101,6 +108,7 @@ func startHttpServer() {
 	healthRouter := http.NewServeMux()
 	trafficRouter := http.NewServeMux()
 
+	healthRouter.Handle("/metrics", promhttp.Handler())
 	healthRouter.HandleFunc("/health/ready", health.ready)
 	healthRouter.HandleFunc("/health/alive", health.alive)
 	trafficRouter.HandleFunc("/v1/restart", restart.do)

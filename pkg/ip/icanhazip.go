@@ -4,7 +4,11 @@ import (
 	"io"
 	"net/http"
 	"strings"
+
+	"github.com/larivierec/cloudflare-ddns/pkg/metrics"
 )
+
+const icanHaz = "icanhazip"
 
 type ICanHazIp struct {
 	BaseUrl string
@@ -12,6 +16,10 @@ type ICanHazIp struct {
 
 func (i *ICanHazIp) setup() {
 	i.BaseUrl = "https://ipv4.icanhazip.com"
+}
+
+func (i *ICanHazIp) GetProviderName() string {
+	return icanHaz
 }
 
 func (i *ICanHazIp) GetCurrentIP() (string, error) {
@@ -25,6 +33,6 @@ func (i *ICanHazIp) GetCurrentIP() (string, error) {
 	if err != nil {
 		return "", err
 	}
-
+	metrics.IncrementProvider(i)
 	return strings.TrimSpace(string(body)), err
 }
