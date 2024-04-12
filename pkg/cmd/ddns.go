@@ -74,15 +74,11 @@ func Start() {
 	pflag.StringVar(&providerName, "provider", "ipify", "set this to the ip provider that will be queried for your public ip address.")
 	pflag.Parse()
 
-	err := api.InitializeAPI(&creds)
+	api.InitializeAPI(&creds)
 	createProvider()
 	metrics.InitMetrics()
 
-	if err != nil {
-		log.Fatalf("unable to initialize cloudflare api")
-	}
-
-	ticker := time.NewTicker(3 * time.Minute)
+	ticker := time.NewTicker(1 * time.Minute)
 	go func() {
 		for {
 			select {
