@@ -52,7 +52,7 @@ jobs:
       with:
         sbom: "${{ github.event.repository.name }}-sbom.spdx.json"
     - name: Upload Anchore scan SARIF report
-      uses: github/codeql-action/upload-sarif@df5a14dc28094dc936e103b37d749c6628682b60 # v3
+      uses: github/codeql-action/upload-sarif@c7f9125735019aa87cfc361530512d50ea439c71 # v3
       with:
         sarif_file: ${{ steps.scan.outputs.sarif }}
     - name: Login to GitHub Container Registry
