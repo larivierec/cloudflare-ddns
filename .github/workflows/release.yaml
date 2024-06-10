@@ -26,7 +26,7 @@ jobs:
         version: latest
         driver-opts: image=moby/buildkit:latest
     - name: build local container
-      uses: docker/build-push-action@2cdde995de11925a030ce8070c3d77a52ffcf1c0 # v5
+      uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5
       with:
         tags: localbuild/cloudflare-ddns:latest
         push: false
@@ -61,7 +61,7 @@ jobs:
         password: ${{ secrets.GITHUB_TOKEN }}
     - name: Build and Push
       if: github.event_name != 'pull_request'
-      uses: docker/build-push-action@2cdde995de11925a030ce8070c3d77a52ffcf1c0 # v5
+      uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5
       with:
         context: .
         file: ./Dockerfile
