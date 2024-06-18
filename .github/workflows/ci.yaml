@@ -30,7 +30,7 @@ jobs:
         version: latest
         driver-opts: image=moby/buildkit:latest
     - name: Build local image for scan and sbom
-      uses: docker/build-push-action@c382f710d39a5bb4e430307530a720f50c2d3318 # v6
+      uses: docker/build-push-action@94f8f8c2eec4bc3f1d78c1755580779804cb87b2 # v6
       with:
         tags: localbuild/cloudflare-ddns:latest
         push: false
@@ -64,7 +64,7 @@ jobs:
         password: ${{ secrets.GITHUB_TOKEN }}
     - name: Build and Push
       if: github.event_name != 'pull_request'
-      uses: docker/build-push-action@c382f710d39a5bb4e430307530a720f50c2d3318 # v6
+      uses: docker/build-push-action@94f8f8c2eec4bc3f1d78c1755580779804cb87b2 # v6
       with:
         context: .
         file: ./Dockerfile
