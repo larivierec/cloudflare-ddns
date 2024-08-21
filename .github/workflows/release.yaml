@@ -40,7 +40,7 @@ jobs:
         severity-cutoff: critical
         acs-report-enable: true
     - name: Create SBOM
-      uses: anchore/sbom-action@ab9d16d4b419c9d1a02df5213fa0ebe965ca5a57 # v0
+      uses: anchore/sbom-action@61119d458adab75f756bc0b9e4bde25725f86a7a # v0
       with:
         format: spdx-json
         output-file: "${{ github.event.repository.name }}-sbom.spdx.json"
