@@ -33,6 +33,6 @@ func (i *ICanHazIp) GetCurrentIP() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	metrics.IncrementProvider(i)
+	metrics.Collect(i)
 	return strings.TrimSpace(string(body)), err
 }
