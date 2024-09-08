@@ -60,7 +60,7 @@ func ListDNSRecordsFiltered(zoneName string, wantedRecordName string) (dns.Recor
 	return dns.Record{}, "", fmt.Errorf("record %s not found", wantedRecordName)
 }
 
-func UpdateDNSRecord(result string, zoneId string, record dns.Record) error {
+func UpdateDNSRecord(result string, zoneId string, record dns.Record) (*dns.Record, error) {
 	newRecord := dns.ARecordParam{
 		Type:    cloudflare.F(dns.ARecordTypeA),
 		Name:    cloudflare.F(record.Name),
@@ -75,7 +75,8 @@ func UpdateDNSRecord(result string, zoneId string, record dns.Record) error {
 
 	if err != nil {
 		log.Println("unable to update dns record")
+		return nil, err
 	}
 	log.Printf("record %s updated successfully\n", resp.Name)
-	return err
+	return resp, err
 }
