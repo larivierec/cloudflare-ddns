@@ -11,7 +11,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/cloudflare/cloudflare-go/v2/dns"
+	"github.com/cloudflare/cloudflare-go/v3/dns"
 	"github.com/larivierec/cloudflare-ddns/pkg/api"
 	"github.com/larivierec/cloudflare-ddns/pkg/ip"
 	"github.com/larivierec/cloudflare-ddns/pkg/metrics"
