@@ -1,4 +1,4 @@
-# cloudflare-ddns
+# ddns
 
 # Purpose
 

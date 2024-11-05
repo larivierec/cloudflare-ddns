@@ -11,7 +11,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/cloudflare/cloudflare-go/v2/dns"
 	"github.com/larivierec/cloudflare-ddns/pkg/api"
 	"github.com/larivierec/cloudflare-ddns/pkg/ip"
 	"github.com/larivierec/cloudflare-ddns/pkg/metrics"
@@ -22,17 +21,18 @@ import (
 )
 
 var (
-	cachedIpInfo  = ""
-	healthServer  = http.Server{}
-	trafficServer = http.Server{}
-	quit          = make(chan bool)
-	done          = make(chan os.Signal, 1)
-	providerName  = ""
-	providers     = []api.Interface{}
-	zoneName      string
-	recordName    string
-	isServerless  bool
-	creds         api.CloudflareCredentials
+	cachedIpInfo           = ""
+	healthServer           = http.Server{}
+	trafficServer          = http.Server{}
+	quit                   = make(chan bool)
+	done                   = make(chan os.Signal, 1)
+	ipProviderName         = ""
+	ipProviders            = []api.Interface{}
+	requestedCloudProvider string
+	zoneName               string
+	recordName             string
+	isServerless           bool
+	cloudProvider          api.CloudProvider
 )
 
 type HealthHandler struct{}
@@ -58,34 +58,35 @@ func (handle *RestartHandler) do(w http.ResponseWriter, r *http.Request) {
 func (handle *ExternalHandler) get(w http.ResponseWriter, r *http.Request) {
 	metrics.IncrementReqs(r)
 	if cachedIpInfo == "" {
-		cachedIpInfo, _ = provider.GetCurrentIP(*getProvider(providerName))
+		cachedIpInfo, _ = provider.GetCurrentIP(*getProvider(ipProviderName))
 	}
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(cachedIpInfo))
 }
 
 func initializeCloudflare() {
-	creds = api.CloudflareCredentials{
+	creds := api.CloudflareCredentials{
 		ApiKey:          os.Getenv("API_KEY"),
 		AccountEmail:    os.Getenv("ACCOUNT_EMAIL"),
 		CloudflareToken: os.Getenv("ACCOUNT_TOKEN"),
 	}
-	api.InitializeAPI(&creds)
+	cloudProvider, _ = api.NewCloudflareProvider(&creds)
 }
 
 func Start() {
-	initializeCloudflare()
+	pflag.StringVar(&requestedCloudProvider, "cloud-provider", "", "set this ")
 	pflag.StringVar(&zoneName, "zone-name", "", "set this to the cloudflare zone name.")
 	pflag.StringVar(&recordName, "record-name", "", "set this to the cloudflare record in which you want to compare.")
-	pflag.StringVar(&providerName, "provider", "ipify", "set this to the ip provider that will be queried for your public ip address.")
+	pflag.StringVar(&ipProviderName, "provider", "ipify", "set this to the ip provider that will be queried for your public ip address.")
 	pflag.Parse()
 
 	createProvider()
+	createCloudProvider()
 
 	if !isServerless {
 		metrics.InitMetrics()
 
-		ticker := time.NewTicker(3 * time.Minute)
+		ticker := time.NewTicker(1 * time.Minute)
 		go func() {
 			for {
 				select {
@@ -151,7 +152,7 @@ func startHttpServer() {
 }
 
 func StartServerless(w http.ResponseWriter, r *http.Request) {
-	initializeCloudflare()
+	createCloudProvider()
 	zoneName := os.Getenv("ZONE_NAME")
 	recordName := os.Getenv("RECORD_NAME")
 
@@ -168,21 +169,21 @@ func StartServerless(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("DNS updated successfully"))
 }
 
-func update(zoneName string, recordName string) (*dns.Record, error) {
-	var rec *dns.Record
-	result, err := provider.GetCurrentIP(*getProvider(providerName))
+func update(zoneName string, recordName string) (*api.Record, error) {
+	var rec = &api.Record{}
+	result, err := provider.GetCurrentIP(*getProvider(ipProviderName))
 	if err != nil {
 		return nil, fmt.Errorf("unable to get provider ip, skipping update. error: %v", err)
 	}
 	if cachedIpInfo != result {
 		cachedIpInfo = result
-		record, zoneId, err := api.ListDNSRecordsFiltered(zoneName, recordName)
+		record, err := cloudProvider.ListDNSRecordsFiltered(zoneName, recordName)
 		if err != nil {
 			return nil, fmt.Errorf("unable to filter for %s. err: %s", recordName, err)
 		}
-
-		if cachedIpInfo != record.Content {
-			rec, err = api.UpdateDNSRecord(result, zoneId, record)
+		cloudProvider.FillRecord(record, rec)
+		if cachedIpInfo != record["content"] {
+			_, err := cloudProvider.UpdateDNSRecord(zoneName, *rec)
 			if err != nil {
 				return nil, fmt.Errorf("unable to update record %s. err : %s", recordName, err)
 			}
@@ -210,32 +211,41 @@ func stopServer() {
 }
 
 func createProvider() {
-	switch providerName {
+	switch ipProviderName {
 	case "ipify":
-		providers = append(providers, &ip.Ipify{})
+		ipProviders = append(ipProviders, &ip.Ipify{})
 	case "icanhazip":
 	case "icanhaz":
-		providers = append(providers, &ip.ICanHazIp{})
+		ipProviders = append(ipProviders, &ip.ICanHazIp{})
 	case "random":
-		providers = append(providers, &ip.Ipify{})
-		providers = append(providers, &ip.ICanHazIp{})
+		ipProviders = append(ipProviders, &ip.Ipify{})
+		ipProviders = append(ipProviders, &ip.ICanHazIp{})
 	default:
-		providerName = "random"
-		providers = append(providers, &ip.Ipify{})
-		providers = append(providers, &ip.ICanHazIp{})
+		ipProviderName = "random"
+		ipProviders = append(ipProviders, &ip.Ipify{})
+		ipProviders = append(ipProviders, &ip.ICanHazIp{})
+	}
+}
+
+func createCloudProvider() {
+	switch requestedCloudProvider {
+	case "cloudflare":
+		initializeCloudflare()
+	default:
+		initializeCloudflare()
 	}
 }
 
 func getProvider(typeName string) *api.Interface {
 	if typeName != "random" {
-		return &providers[0]
+		return &ipProviders[0]
 	} else {
-		return &providers[rand.Intn(len(providers))]
+		return &ipProviders[rand.Intn(len(ipProviders))]
 	}
 }
 
-func recordChecker(record *dns.Record) {
-	if record != nil {
+func recordChecker(record *api.Record) {
+	if cachedIpInfo != record.Content {
 		log.Printf("record updated to: %s\n", record.Content)
 	} else {
 		log.Println("record is the same, ignoring.")
