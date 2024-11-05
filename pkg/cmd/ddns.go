@@ -11,10 +11,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/larivierec/cloudflare-ddns/pkg/api"
-	"github.com/larivierec/cloudflare-ddns/pkg/ip"
-	"github.com/larivierec/cloudflare-ddns/pkg/metrics"
-	"github.com/larivierec/cloudflare-ddns/pkg/provider"
+	"github.com/larivierec/ddns/pkg/api"
+	"github.com/larivierec/ddns/pkg/ip"
+	"github.com/larivierec/ddns/pkg/metrics"
+	"github.com/larivierec/ddns/pkg/provider"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/spf13/pflag"

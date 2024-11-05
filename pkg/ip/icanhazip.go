@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/larivierec/cloudflare-ddns/pkg/metrics"
+	"github.com/larivierec/ddns/pkg/metrics"
 )
 
 const icanHaz = "icanhazip"

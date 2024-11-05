@@ -15,8 +15,8 @@ ENV CGO_ENABLED=0 \
 
 RUN apk add --no-cache ca-certificates && update-ca-certificates
 
-WORKDIR /go/src/github.com/larivierec/cloudflare-ddns
-COPY . /go/src/github.com/larivierec/cloudflare-ddns/
+WORKDIR /go/src/github.com/larivierec/ddns
+COPY . /go/src/github.com/larivierec/ddns/
 
 RUN go mod download
 RUN go build -o ddns cmd/ddns.go
@@ -24,7 +24,7 @@ RUN go build -o ddns cmd/ddns.go
 FROM gcr.io/distroless/static:nonroot
 USER nonroot:nonroot
 
-COPY --from=build --chown=nonroot:nonroot /go/src/github.com/larivierec/cloudflare-ddns/ddns /usr/local/bin/ddns
+COPY --from=build --chown=nonroot:nonroot /go/src/github.com/larivierec/ddns/ddns /usr/local/bin/ddns
 COPY --from=build --chown=nonroot:nonroot /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 
 ENTRYPOINT [ "ddns" ]

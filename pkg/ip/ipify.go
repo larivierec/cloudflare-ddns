@@ -5,7 +5,7 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/larivierec/cloudflare-ddns/pkg/metrics"
+	"github.com/larivierec/ddns/pkg/metrics"
 )
 
 const ipifyString = "ipify"

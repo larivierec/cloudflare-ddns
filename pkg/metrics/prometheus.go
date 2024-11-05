@@ -3,7 +3,7 @@ package metrics
 import (
 	"net/http"
 
-	"github.com/larivierec/cloudflare-ddns/pkg/api"
+	"github.com/larivierec/ddns/pkg/api"
 	"github.com/prometheus/client_golang/prometheus"
 )
 

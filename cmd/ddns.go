@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"os"
 
-	ddns "github.com/larivierec/cloudflare-ddns/pkg/cmd"
+	ddns "github.com/larivierec/ddns/pkg/cmd"
 )
 
 func main() {

@@ -1,4 +1,4 @@
-module github.com/larivierec/cloudflare-ddns
+module github.com/larivierec/ddns
 
 go 1.23
 

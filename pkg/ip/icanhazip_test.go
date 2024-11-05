@@ -3,7 +3,7 @@ package ip
 import (
 	"testing"
 
-	"github.com/larivierec/cloudflare-ddns/pkg/provider"
+	"github.com/larivierec/ddns/pkg/provider"
 	"gotest.tools/v3/assert"
 )
 
