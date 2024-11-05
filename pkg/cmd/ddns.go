@@ -73,6 +73,14 @@ func initializeCloudflare() {
 	cloudProvider, _ = api.NewCloudflareProvider(&creds)
 }
 
+func initializeRoute53() {
+	var err error
+	cloudProvider, err = api.NewRoute53Provider()
+	if err != nil {
+		log.Fatalf("unable to initialize AWS SDK. Exiting %s", err.Error())
+	}
+}
+
 func Start() {
 	pflag.StringVar(&requestedCloudProvider, "cloud-provider", "", "set this ")
 	pflag.StringVar(&zoneName, "zone-name", "", "set this to the cloudflare zone name.")
@@ -231,6 +239,8 @@ func createCloudProvider() {
 	switch requestedCloudProvider {
 	case "cloudflare":
 		initializeCloudflare()
+	case "aws":
+		initializeRoute53()
 	default:
 		initializeCloudflare()
 	}
