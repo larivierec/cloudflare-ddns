@@ -23,7 +23,8 @@ OR
 1. `--zone-name`: The name of the zone you wish to modify.
 2. `--record-name`: The name of the record you wish to modify inside your zone.
 3. `--provider`: The provider you wish to use can be: `ipify`, `icanhazip`, `icanhaz`. Anything other than these three will be considered as "random"
+4. `--ticker`: Directly uses Golang's implementation of `time.Duration`. Default is "3m", you can set this to whatever you'd like.
 
 ## Example
 
-[Helm Release - Flux Example](https://github.com/larivierec/home-cluster/blob/main/kubernetes/apps/networking/ddns/app/helm-release.yaml)
+[Helm Release - Flux Example](https://github.com/larivierec/home-cluster/blob/main/kubernetes/main/apps/networking/ddns/app/helm-release.yaml)

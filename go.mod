@@ -2,6 +2,8 @@ module github.com/larivierec/cloudflare-ddns
 
 go 1.23
 
+toolchain go1.23.3
+
 require (
 	github.com/prometheus/client_golang v1.20.5
 	github.com/spf13/pflag v1.0.5

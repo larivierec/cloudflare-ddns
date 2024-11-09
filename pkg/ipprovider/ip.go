@@ -1,6 +1,6 @@
-package api
+package ipprovider
 
-type Interface interface {
+type Provider interface {
 	GetCurrentIP() (string, error)
 	GetProviderName() string
 }

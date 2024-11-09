@@ -1,4 +1,4 @@
-package api
+package cloudflare
 
 import (
 	"bytes"
@@ -7,10 +7,13 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"strings"
+
+	"github.com/larivierec/cloudflare-ddns/pkg/cloudprovider"
 )
 
-var cloudflareAPIUrl = "https://api.cloudflare.com/client/v4"
+var cloudflareAPIUrl = "https://cloudprovider.cloudflare.com/client/v4"
 
 type CloudflareProvider struct {
 	creds CloudflareCredentials
@@ -27,8 +30,13 @@ type Zone struct {
 	Name string `json:"name"`
 }
 
-func NewCloudflareProvider(creds *CloudflareCredentials) (*CloudflareProvider, error) {
-	return &CloudflareProvider{creds: *creds}, nil
+func NewCloudflareProvider() *CloudflareProvider {
+	creds := CloudflareCredentials{
+		ApiKey:          os.Getenv("API_KEY"),
+		AccountEmail:    os.Getenv("ACCOUNT_EMAIL"),
+		CloudflareToken: os.Getenv("ACCOUNT_TOKEN"),
+	}
+	return &CloudflareProvider{creds: creds}
 }
 
 func (c *CloudflareProvider) ListDNSRecordsFiltered(zoneName string, recordName string) (map[string]string, error) {
@@ -65,10 +73,10 @@ func (c *CloudflareProvider) ListDNSRecordsFiltered(zoneName string, recordName 
 		}
 	}
 
-	return nil, fmt.Errorf("record %s not found", recordName)
+	return nil, fmt.Errorf("[ListDNSRecordsFiltered] record %s not found", recordName)
 }
 
-func (c *CloudflareProvider) UpdateDNSRecord(zone string, rec Record) (map[string]string, error) {
+func (c *CloudflareProvider) UpdateDNSRecord(zone string, rec cloudprovider.Record) (map[string]string, error) {
 	zoneID, err := c.getZoneID(zone)
 	if err != nil {
 		return nil, err
@@ -103,8 +111,44 @@ func (c *CloudflareProvider) UpdateDNSRecord(zone string, rec Record) (map[strin
 		return nil, err
 	}
 
-	log.Printf("record %s updated successfully\n", result.Result["name"].(string))
+	log.Printf("[UpdateDNSRecord] record %s updated successfully\n", result.Result["name"].(string))
 	return c.convertToGenericMap(result.Result), nil
+}
+
+func (c *CloudflareProvider) GetDNSRecord(zone string, recordName string) (map[string]string, error) {
+	zoneID, err := c.getZoneID(zone)
+	if err != nil {
+		return nil, err
+	}
+	url := fmt.Sprintf("%s/zones/%s/dns_records?name=%s", cloudflareAPIUrl, zoneID, recordName)
+	req, _ := http.NewRequest("GET", url, nil)
+	c.setHeaders(req)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("error retrieving DNS records: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("failed to list DNS records: %s", string(body))
+	}
+
+	var result struct {
+		Result []map[string]interface{} `json:"result"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, err
+	}
+
+	for _, record := range result.Result {
+		if strings.EqualFold(record["name"].(string), recordName) {
+			return c.convertToGenericMap(record), nil
+		}
+	}
+
+	return nil, fmt.Errorf("[GetDNSRecord] record %s not found", recordName)
 }
 
 func (c *CloudflareProvider) setHeaders(req *http.Request) {
@@ -162,7 +206,7 @@ func (c *CloudflareProvider) convertToGenericMap(record map[string]interface{}) 
 	return genericRecord
 }
 
-func (c *CloudflareProvider) FillRecord(generic map[string]string, record *Record) {
+func (c *CloudflareProvider) FillRecord(generic map[string]string, record *cloudprovider.Record) {
 	record.Content = generic["content"]
 	record.ID = generic["id"]
 	record.Name = generic["name"]

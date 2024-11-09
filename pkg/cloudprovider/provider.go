@@ -1,4 +1,4 @@
-package api
+package cloudprovider
 
 type Record struct {
 	ID      string
@@ -8,9 +8,9 @@ type Record struct {
 	TTL     int
 }
 
-type CloudProvider interface {
+type Provider interface {
 	ListDNSRecordsFiltered(zoneName string, recordName string) (map[string]string, error)
 	UpdateDNSRecord(zone string, record Record) (map[string]string, error)
+	GetDNSRecord(zoneName string, recordName string) (map[string]string, error)
 	FillRecord(generic map[string]string, record *Record)
-	// GetDNSRecord(zoneName string, recordName string) (map[string]string, error)
 }

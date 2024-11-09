@@ -11,10 +11,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/larivierec/cloudflare-ddns/pkg/api"
-	"github.com/larivierec/cloudflare-ddns/pkg/ip"
+	"github.com/larivierec/cloudflare-ddns/pkg/cloudprovider"
+	"github.com/larivierec/cloudflare-ddns/pkg/cloudprovider/cloudflare"
+	"github.com/larivierec/cloudflare-ddns/pkg/ipprovider"
 	"github.com/larivierec/cloudflare-ddns/pkg/metrics"
-	"github.com/larivierec/cloudflare-ddns/pkg/provider"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/spf13/pflag"
@@ -27,12 +27,13 @@ var (
 	quit                   = make(chan bool)
 	done                   = make(chan os.Signal, 1)
 	ipProviderName         = ""
-	ipProviders            = []api.Interface{}
+	ipProviders            = []ipprovider.Provider{}
 	requestedCloudProvider string
 	zoneName               string
 	recordName             string
 	isServerless           bool
-	cloudProvider          api.CloudProvider
+	ticker                 time.Duration
+	cloudProviderObj       cloudprovider.Provider
 )
 
 type HealthHandler struct{}
@@ -58,26 +59,19 @@ func (handle *RestartHandler) do(w http.ResponseWriter, r *http.Request) {
 func (handle *ExternalHandler) get(w http.ResponseWriter, r *http.Request) {
 	metrics.IncrementReqs(r)
 	if cachedIpInfo == "" {
-		cachedIpInfo, _ = provider.GetCurrentIP(*getProvider(ipProviderName))
+		provider := *getProvider(ipProviderName)
+		cachedIpInfo, _ = ipprovider.GetCurrentIP(provider, metrics.IncrementProvider)
 	}
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(cachedIpInfo))
 }
 
-func initializeCloudflare() {
-	creds := api.CloudflareCredentials{
-		ApiKey:          os.Getenv("API_KEY"),
-		AccountEmail:    os.Getenv("ACCOUNT_EMAIL"),
-		CloudflareToken: os.Getenv("ACCOUNT_TOKEN"),
-	}
-	cloudProvider, _ = api.NewCloudflareProvider(&creds)
-}
-
 func Start() {
-	pflag.StringVar(&requestedCloudProvider, "cloud-provider", "", "set this ")
+	pflag.StringVar(&requestedCloudProvider, "cloud-provider", "cloudflare", "set this to the requested cloud provider. where your `A` record will be created.")
 	pflag.StringVar(&zoneName, "zone-name", "", "set this to the cloudflare zone name.")
 	pflag.StringVar(&recordName, "record-name", "", "set this to the cloudflare record in which you want to compare.")
 	pflag.StringVar(&ipProviderName, "provider", "ipify", "set this to the ip provider that will be queried for your public ip address.")
+	pflag.DurationVar(&ticker, "ticker", time.Duration(3*time.Minute), "set this to the desired time to check your WAN IP against the IP Providers.")
 	pflag.Parse()
 
 	createProvider()
@@ -86,7 +80,7 @@ func Start() {
 	if !isServerless {
 		metrics.InitMetrics()
 
-		ticker := time.NewTicker(1 * time.Minute)
+		ticker := time.NewTicker(ticker)
 		go func() {
 			for {
 				select {
@@ -152,11 +146,11 @@ func startHttpServer() {
 }
 
 func StartServerless(w http.ResponseWriter, r *http.Request) {
+	createProvider()
 	createCloudProvider()
 	zoneName := os.Getenv("ZONE_NAME")
 	recordName := os.Getenv("RECORD_NAME")
 
-	createProvider()
 	rec, err := update(zoneName, recordName)
 	if err != nil {
 		log.Printf("DNS update failed: %v", err)
@@ -169,21 +163,21 @@ func StartServerless(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("DNS updated successfully"))
 }
 
-func update(zoneName string, recordName string) (*api.Record, error) {
-	var rec = &api.Record{}
-	result, err := provider.GetCurrentIP(*getProvider(ipProviderName))
+func update(zoneName string, recordName string) (*cloudprovider.Record, error) {
+	var rec = &cloudprovider.Record{}
+	result, err := ipprovider.GetCurrentIP(*getProvider(ipProviderName), metrics.IncrementProvider)
 	if err != nil {
 		return nil, fmt.Errorf("unable to get provider ip, skipping update. error: %v", err)
 	}
 	if cachedIpInfo != result {
 		cachedIpInfo = result
-		record, err := cloudProvider.ListDNSRecordsFiltered(zoneName, recordName)
+		record, err := cloudProviderObj.GetDNSRecord(zoneName, recordName)
 		if err != nil {
-			return nil, fmt.Errorf("unable to filter for %s. err: %s", recordName, err)
+			return nil, fmt.Errorf("unable to retrieve record %s in zone %s. err: %s", recordName, zoneName, err)
 		}
-		cloudProvider.FillRecord(record, rec)
+		cloudProviderObj.FillRecord(record, rec)
 		if cachedIpInfo != record["content"] {
-			_, err := cloudProvider.UpdateDNSRecord(zoneName, *rec)
+			_, err := cloudProviderObj.UpdateDNSRecord(zoneName, *rec)
 			if err != nil {
 				return nil, fmt.Errorf("unable to update record %s. err : %s", recordName, err)
 			}
@@ -213,30 +207,30 @@ func stopServer() {
 func createProvider() {
 	switch ipProviderName {
 	case "ipify":
-		ipProviders = append(ipProviders, &ip.Ipify{})
+		ipProviders = append(ipProviders, &ipprovider.Ipify{})
 	case "icanhazip":
 	case "icanhaz":
-		ipProviders = append(ipProviders, &ip.ICanHazIp{})
+		ipProviders = append(ipProviders, &ipprovider.ICanHazIp{})
 	case "random":
-		ipProviders = append(ipProviders, &ip.Ipify{})
-		ipProviders = append(ipProviders, &ip.ICanHazIp{})
+		ipProviders = append(ipProviders, &ipprovider.Ipify{})
+		ipProviders = append(ipProviders, &ipprovider.ICanHazIp{})
 	default:
 		ipProviderName = "random"
-		ipProviders = append(ipProviders, &ip.Ipify{})
-		ipProviders = append(ipProviders, &ip.ICanHazIp{})
+		ipProviders = append(ipProviders, &ipprovider.Ipify{})
+		ipProviders = append(ipProviders, &ipprovider.ICanHazIp{})
 	}
 }
 
 func createCloudProvider() {
 	switch requestedCloudProvider {
 	case "cloudflare":
-		initializeCloudflare()
+		cloudProviderObj = cloudflare.NewCloudflareProvider()
 	default:
-		initializeCloudflare()
+		cloudProviderObj = cloudflare.NewCloudflareProvider()
 	}
 }
 
-func getProvider(typeName string) *api.Interface {
+func getProvider(typeName string) *ipprovider.Provider {
 	if typeName != "random" {
 		return &ipProviders[0]
 	} else {
@@ -244,7 +238,7 @@ func getProvider(typeName string) *api.Interface {
 	}
 }
 
-func recordChecker(record *api.Record) {
+func recordChecker(record *cloudprovider.Record) {
 	if cachedIpInfo != record.Content {
 		log.Printf("record updated to: %s\n", record.Content)
 	} else {

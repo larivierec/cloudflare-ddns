@@ -1,11 +1,9 @@
-package ip
+package ipprovider
 
 import (
 	"encoding/json"
 	"io"
 	"net/http"
-
-	"github.com/larivierec/cloudflare-ddns/pkg/metrics"
 )
 
 const ipifyString = "ipify"
@@ -38,7 +36,6 @@ func (i *Ipify) GetCurrentIP() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	metrics.IncrementProvider(i)
 	err = json.Unmarshal(body, &ipInfo)
 	return ipInfo.Ip, err
 }
