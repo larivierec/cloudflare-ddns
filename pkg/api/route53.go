@@ -29,14 +29,14 @@ func NewRoute53Provider() (*Route53Provider, error) {
 	}, nil
 }
 
-func (p *Route53Provider) ListDNSRecordsFiltered(zoneName string, recordName string) (map[string]string, error) {
-	zone, err := p.getHostedZoneID(zoneName)
+func (p *Route53Provider) ListDNSRecordsFiltered(zoneId string, recordName string) (map[string]string, error) {
+	zone, err := p.getHostedZone(zoneId)
 	if err != nil {
 		return nil, err
 	}
 
 	records, err := p.svc.ListResourceRecordSets(context.TODO(), &route53.ListResourceRecordSetsInput{
-		HostedZoneId:    &zone,
+		HostedZoneId:    zone.Id,
 		StartRecordType: types.RRTypeA,
 		StartRecordName: &recordName,
 	})
@@ -46,16 +46,16 @@ func (p *Route53Provider) ListDNSRecordsFiltered(zoneName string, recordName str
 	}
 
 	for _, record := range records.ResourceRecordSets {
-		if strings.EqualFold(*record.Name, recordName) {
+		if strings.EqualFold(strings.Trim(*record.Name, "."), recordName) {
 			return p.convertToGenericMap(record), nil
 		}
 	}
 
-	return nil, fmt.Errorf("record %s not found in hosted zone %s", recordName, zoneName)
+	return nil, fmt.Errorf("record %s not found in hosted zone %s", recordName, *zone.Name)
 }
 
-func (p *Route53Provider) UpdateDNSRecord(zoneName string, rec Record) (map[string]string, error) {
-	zoneId, err := p.getHostedZoneID(zoneName)
+func (p *Route53Provider) UpdateDNSRecord(zoneId string, rec Record) (map[string]string, error) {
+	zone, err := p.getHostedZone(zoneId)
 	if err != nil {
 		return nil, err
 	}
@@ -79,7 +79,7 @@ func (p *Route53Provider) UpdateDNSRecord(zoneName string, rec Record) (map[stri
 	}
 
 	resp, err := p.svc.ChangeResourceRecordSets(context.TODO(), &route53.ChangeResourceRecordSetsInput{
-		HostedZoneId: aws.String(zoneId),
+		HostedZoneId: aws.String(*zone.Id),
 		ChangeBatch:  changeBatch.ChangeBatch,
 	})
 
@@ -97,17 +97,14 @@ func (p *Route53Provider) UpdateDNSRecord(zoneName string, rec Record) (map[stri
 	}, nil
 }
 
-// GetDNSRecord retrieves the current DNS record using Route53
 func (p *Route53Provider) GetDNSRecord(zoneName, recordName string) (map[string]string, error) {
-	// Get the hosted zone ID
-	hostedZoneID, err := p.getHostedZoneID(zoneName)
+	hostedZone, err := p.getHostedZone(zoneName)
 	if err != nil {
 		return nil, err
 	}
 
-	// Call the ListResourceRecordSets API to get the current DNS record
 	result, err := p.svc.ListResourceRecordSets(context.TODO(), &route53.ListResourceRecordSetsInput{
-		HostedZoneId:    aws.String(hostedZoneID),
+		HostedZoneId:    aws.String(*hostedZone.Id),
 		StartRecordName: aws.String(recordName),
 		StartRecordType: types.RRTypeA, // Assuming A record here
 	})
@@ -128,23 +125,29 @@ func (p *Route53Provider) GetDNSRecord(zoneName, recordName string) (map[string]
 	return nil, fmt.Errorf("DNS record %s not found", recordName)
 }
 
-// getHostedZoneID retrieves the Hosted Zone ID for a given zone name
-func (p *Route53Provider) getHostedZoneID(zoneName string) (string, error) {
-	// Call the ListHostedZones API to find the hosted zone ID
-	result, err := p.svc.ListHostedZonesByName(context.TODO(), &route53.ListHostedZonesByNameInput{
-		DNSName: aws.String(zoneName),
+func (p *Route53Provider) getHostedZone(zone string) (*types.HostedZone, error) {
+	result, err := p.svc.GetHostedZone(context.TODO(), &route53.GetHostedZoneInput{
+		Id: aws.String(zone),
 	})
-	if err != nil {
-		return "", fmt.Errorf("failed to list hosted zones: %v", err)
-	}
 
-	for _, zone := range result.HostedZones {
-		if aws.ToString(zone.Name) == zoneName {
-			return aws.ToString(zone.Id), nil
+	if err != nil {
+		log.Printf("hosted zone id %s not found, trying by name\n", zone)
+		listZones, err := p.svc.ListHostedZonesByName(context.TODO(), &route53.ListHostedZonesByNameInput{
+			DNSName: aws.String(zone),
+		})
+
+		if err != nil {
+			return nil, fmt.Errorf("hosted zone name %s not found", zone)
+		}
+
+		for _, awsZone := range listZones.HostedZones {
+			if strings.EqualFold(*awsZone.Name, zone) {
+				return &awsZone, nil
+			}
 		}
 	}
 
-	return "", fmt.Errorf("hosted zone %s not found", zoneName)
+	return result.HostedZone, nil
 }
 
 func (c *Route53Provider) convertToGenericMap(record types.ResourceRecordSet) map[string]string {
@@ -152,8 +155,8 @@ func (c *Route53Provider) convertToGenericMap(record types.ResourceRecordSet) ma
 	genericRecord := map[string]string{
 		// "id":      fmt.Sprintf("%v", record.["id"]),
 		"type":    fmt.Sprintf("%v", record.Type),
-		"name":    fmt.Sprintf("%v", record.Name),
-		"content": fmt.Sprintf("%v", record.ResourceRecords[0].Value),
+		"name":    fmt.Sprintf("%v", *record.Name),
+		"content": fmt.Sprintf("%v", *record.ResourceRecords[0].Value),
 	}
 
 	return genericRecord

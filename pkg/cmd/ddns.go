@@ -161,11 +161,13 @@ func startHttpServer() {
 
 func StartServerless(w http.ResponseWriter, r *http.Request) {
 	createCloudProvider()
-	zoneName := os.Getenv("ZONE_NAME")
+	zone := os.Getenv("ZONE")
 	recordName := os.Getenv("RECORD_NAME")
+	requestedCloudProvider = os.Getenv("CLOUD_PROVIDER")
 
 	createProvider()
-	rec, err := update(zoneName, recordName)
+	createCloudProvider()
+	rec, err := update(zone, recordName)
 	if err != nil {
 		log.Printf("DNS update failed: %v", err)
 		http.Error(w, "DNS update failed", http.StatusInternalServerError)
