@@ -1,11 +1,9 @@
-package ip
+package ipprovider
 
 import (
 	"io"
 	"net/http"
 	"strings"
-
-	"github.com/larivierec/cloudflare-ddns/pkg/metrics"
 )
 
 const icanHaz = "icanhazip"
@@ -33,6 +31,5 @@ func (i *ICanHazIp) GetCurrentIP() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	metrics.IncrementProvider(i)
 	return strings.TrimSpace(string(body)), err
 }

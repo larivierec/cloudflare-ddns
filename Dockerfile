@@ -6,6 +6,8 @@ ARG TARGETVARIANT=""
 
 ENV GOOS=linux
 ENV GOARCH=amd64
+ARG VERSION=dev
+ARG REVISION=dev
 
 ENV CGO_ENABLED=0 \
     GO111MODULE=on \
@@ -19,7 +21,7 @@ WORKDIR /go/src/github.com/larivierec/cloudflare-ddns
 COPY . /go/src/github.com/larivierec/cloudflare-ddns/
 
 RUN go mod download
-RUN go build -o ddns cmd/ddns.go
+RUN go build -ldflags "-s -w -X main.Version=${VERSION} -X main.Gitsha=${REVISION}" -o ddns cmd/ddns.go
 
 FROM gcr.io/distroless/static:nonroot
 USER nonroot:nonroot
