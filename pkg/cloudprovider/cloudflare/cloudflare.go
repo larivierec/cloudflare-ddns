@@ -13,7 +13,7 @@ import (
 	"github.com/larivierec/cloudflare-ddns/pkg/cloudprovider"
 )
 
-var cloudflareAPIUrl = "https://cloudprovider.cloudflare.com/client/v4"
+var cloudflareAPIUrl = "https://api.cloudflare.com/client/v4"
 
 type CloudflareProvider struct {
 	creds CloudflareCredentials
