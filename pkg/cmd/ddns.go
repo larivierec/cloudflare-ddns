@@ -2,6 +2,7 @@ package ddns
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"math/rand"
@@ -33,6 +34,8 @@ var (
 	recordName             string
 	isServerless           bool
 	ticker                 time.Duration
+	createMissing          bool
+	recordTTL              int
 	cloudProviderObj       cloudprovider.Provider
 )
 
@@ -66,12 +69,32 @@ func (handle *ExternalHandler) get(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(cachedIpInfo))
 }
 
+// external update, i.e. unifi gw
+func (handle *ExternalHandler) set(w http.ResponseWriter, r *http.Request) {
+	ip := r.URL.Query().Get("ip")
+	if ip == "" {
+		http.Error(w, "Missing 'ip' parameter", http.StatusBadRequest)
+		return
+	}
+	newRecord := &cloudprovider.Record{}
+	current, _ := cloudProviderObj.GetDNSRecord(zoneName, recordName)
+	cloudProviderObj.FillRecord(current, newRecord)
+	newRecord.Content = ip
+	responseRecord, _ := cloudProviderObj.UpdateDNSRecord(zoneName, *newRecord)
+	responseRecBytes, _ := json.Marshal(responseRecord)
+	metrics.IncrementReqs(r)
+	w.WriteHeader(http.StatusOK)
+	w.Write(responseRecBytes)
+}
+
 func Start() {
-	pflag.StringVar(&requestedCloudProvider, "cloud-provider", "cloudflare", "set this to the requested cloud provider. where your `A` record will be created.")
-	pflag.StringVar(&zoneName, "zone-name", "", "set this to the cloudflare zone name.")
-	pflag.StringVar(&recordName, "record-name", "", "set this to the cloudflare record in which you want to compare.")
-	pflag.StringVar(&ipProviderName, "provider", "ipify", "set this to the ip provider that will be queried for your public ip address.")
-	pflag.DurationVar(&ticker, "ticker", time.Duration(3*time.Minute), "set this to the desired time to check your WAN IP against the IP Providers.")
+	pflag.StringVar(&requestedCloudProvider, "cloud-provider", "cloudflare", "set this to the requested cloud provider. where your `A` record will be created")
+	pflag.StringVar(&zoneName, "zone-name", "", "set this to the cloudflare zone name")
+	pflag.StringVar(&recordName, "record-name", "", "set this to the cloudflare record in which you want to compare")
+	pflag.StringVar(&ipProviderName, "provider", "ipify", "set this to the ip provider that will be queried for your public ip address")
+	pflag.DurationVar(&ticker, "ticker", time.Duration(3*time.Minute), "set this to the desired time to check your WAN IP against the IP Providers")
+	pflag.BoolVar(&createMissing, "create-missing", false, "create missing ddns record for updating")
+	pflag.IntVar(&recordTTL, "record-ttl", 300, "set this to the value of the requested TTL")
 	pflag.Parse()
 
 	createProvider()
@@ -120,6 +143,7 @@ func startHttpServer() {
 	healthRouter.HandleFunc("/health/alive", health.alive)
 	trafficRouter.HandleFunc("/v1/restart", restart.do)
 	trafficRouter.HandleFunc("/v1/get", ddnsApi.get)
+	trafficRouter.HandleFunc("/v1/set", ddnsApi.set)
 
 	healthServer.Handler = healthRouter
 	healthServer.Addr = ":8080"
@@ -228,6 +252,25 @@ func createCloudProvider() {
 	default:
 		cloudProviderObj = cloudflare.NewCloudflareProvider()
 	}
+	initialize()
+}
+
+func initialize() {
+	result, err := ipprovider.GetCurrentIP(*getProvider(ipProviderName), metrics.IncrementProvider)
+	if err != nil {
+		log.Fatalf("unable to initialize retrieve ip for init, aborting.")
+	}
+	providerRecord, _ := cloudProviderObj.GetDNSRecord(zoneName, recordName)
+	if createMissing && providerRecord == nil {
+		log.Printf("creating %s, in zone %s", recordName, zoneName)
+		rec := &cloudprovider.Record{
+			Type:    "A",
+			TTL:     recordTTL,
+			Name:    recordName,
+			Content: result,
+		}
+		cloudProviderObj.InitializeRecord(zoneName, *rec)
+	}
 }
 
 func getProvider(typeName string) *ipprovider.Provider {
@@ -239,7 +282,7 @@ func getProvider(typeName string) *ipprovider.Provider {
 }
 
 func recordChecker(record *cloudprovider.Record) {
-	if cachedIpInfo != record.Content {
+	if cachedIpInfo != record.Content && record.Content != "" {
 		log.Printf("record updated to: %s\n", record.Content)
 	} else {
 		log.Println("record is the same, ignoring.")
