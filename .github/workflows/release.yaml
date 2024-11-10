@@ -5,6 +5,11 @@ on:
   pull_request:
   push:
     branches: ["main"]
+    paths:
+      - cmd/**
+      - pkg/**
+      - go.*
+      - Dockerfile
   release:
     types: ["published"]
 
@@ -19,7 +24,7 @@ jobs:
         uses: docker/metadata-action@8e5442c4ef9f78752691e2d8f8d19755c6f78e81 # v5
         with:
           images: |
-            ghcr.io/${{ github.repository_owner }}
+            ghcr.io/${{ github.repository }}
           tags: |
             type=semver,pattern={{version}},prefix=v
             type=semver,pattern={{major}}.{{minor}},prefix=v
