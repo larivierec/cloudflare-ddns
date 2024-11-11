@@ -28,6 +28,6 @@ func main() {
 		http.HandleFunc("/", ddns.StartServerless)
 		log.Fatal(http.ListenAndServe(":9000", nil))
 	} else {
-		ddns.Start()
+		ddns.Start(mode)
 	}
 }

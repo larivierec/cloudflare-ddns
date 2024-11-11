@@ -21,6 +21,14 @@ import (
 	"github.com/spf13/pflag"
 )
 
+type applicationMode int
+
+const (
+	application applicationMode = iota
+	serverless
+	api
+)
+
 var (
 	cachedIpInfo           = ""
 	healthServer           = http.Server{}
@@ -32,7 +40,7 @@ var (
 	requestedCloudProvider string
 	zoneName               string
 	recordName             string
-	isServerless           bool
+	mode                   applicationMode
 	ticker                 time.Duration
 	createMissing          bool
 	recordTTL              int
@@ -80,6 +88,10 @@ func (handle *ExternalHandler) set(w http.ResponseWriter, r *http.Request) {
 	current, _ := cloudProviderObj.GetDNSRecord(zoneName, recordName)
 	cloudProviderObj.FillRecord(current, newRecord)
 	newRecord.Content = ip
+	if current == nil {
+		fmt.Printf("record %s, doesn't exist in cloud provider, creating.", recordName)
+		cloudProviderObj.InitializeRecord(zoneName, *newRecord)
+	}
 	responseRecord, _ := cloudProviderObj.UpdateDNSRecord(zoneName, *newRecord)
 	responseRecBytes, _ := json.Marshal(responseRecord)
 	metrics.IncrementReqs(r)
@@ -87,7 +99,8 @@ func (handle *ExternalHandler) set(w http.ResponseWriter, r *http.Request) {
 	w.Write(responseRecBytes)
 }
 
-func Start() {
+func Start(chosenMode string) {
+	modeSelector(chosenMode)
 	pflag.StringVar(&requestedCloudProvider, "cloud-provider", "cloudflare", "set this to the requested cloud provider. where your `A` record will be created")
 	pflag.StringVar(&zoneName, "zone-name", "", "set this to the cloudflare zone name")
 	pflag.StringVar(&recordName, "record-name", "", "set this to the cloudflare record in which you want to compare")
@@ -100,26 +113,36 @@ func Start() {
 	createProvider()
 	createCloudProvider()
 
-	if !isServerless {
+	if mode != serverless {
 		metrics.InitMetrics()
 
-		ticker := time.NewTicker(ticker)
-		go func() {
-			for {
-				select {
-				case <-ticker.C:
-					rec, err := update(zoneName, recordName)
-					if err != nil {
-						log.Println(err)
+		if mode == application {
+			ticker := time.NewTicker(ticker)
+			go func() {
+				for {
+					select {
+					case <-ticker.C:
+						rec, err := update(zoneName, recordName)
+						if err != nil {
+							log.Println(err)
+						}
+						recordChecker(rec)
+					case <-quit:
+						ticker.Stop()
+						return
 					}
-					recordChecker(rec)
-				case <-quit:
-					ticker.Stop()
-					return
 				}
-			}
-		}()
-
+			}()
+		} else {
+			go func() {
+				for {
+					select {
+					case <-quit:
+						return
+					}
+				}
+			}()
+		}
 		startHttpServer()
 	} else {
 		log.Println("running in serverless mode")
@@ -282,9 +305,24 @@ func getProvider(typeName string) *ipprovider.Provider {
 }
 
 func recordChecker(record *cloudprovider.Record) {
-	if cachedIpInfo != record.Content && record.Content != "" {
-		log.Printf("record updated to: %s\n", record.Content)
-	} else {
-		log.Println("record is the same, ignoring.")
+	if record != nil {
+		if cachedIpInfo != record.Content && record.Content != "" {
+			log.Printf("record updated to: %s\n", record.Content)
+		} else {
+			log.Println("record is the same, ignoring.")
+		}
+	}
+}
+
+func modeSelector(chosenMode string) {
+	switch chosenMode {
+	case "api":
+		mode = api
+	case "serverless":
+		mode = serverless
+	case "application":
+		mode = application
+	default:
+		mode = application
 	}
 }
