@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -112,6 +113,7 @@ func Start(chosenMode string) {
 
 	createProvider()
 	createCloudProvider()
+	initialize()
 
 	if mode != serverless {
 		metrics.InitMetrics()
@@ -195,6 +197,7 @@ func startHttpServer() {
 func StartServerless(w http.ResponseWriter, r *http.Request) {
 	createProvider()
 	createCloudProvider()
+	initialize()
 	zoneName := os.Getenv("ZONE_NAME")
 	recordName := os.Getenv("RECORD_NAME")
 
@@ -252,11 +255,11 @@ func stopServer() {
 }
 
 func createProvider() {
+	ipProviderName = strings.ToLower(strings.TrimSpace(ipProviderName))
 	switch ipProviderName {
 	case "ipify":
 		ipProviders = append(ipProviders, &ipprovider.Ipify{})
-	case "icanhazip":
-	case "icanhaz":
+	case "icanhazip", "icanhaz":
 		ipProviders = append(ipProviders, &ipprovider.ICanHazIp{})
 	case "random":
 		ipProviders = append(ipProviders, &ipprovider.Ipify{})
@@ -275,7 +278,6 @@ func createCloudProvider() {
 	default:
 		cloudProviderObj = cloudflare.NewCloudflareProvider()
 	}
-	initialize()
 }
 
 func initialize() {
