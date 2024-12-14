@@ -2,7 +2,6 @@ package ddns
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"math/rand"
@@ -17,17 +16,10 @@ import (
 	"github.com/larivierec/cloudflare-ddns/pkg/cloudprovider/cloudflare"
 	"github.com/larivierec/cloudflare-ddns/pkg/ipprovider"
 	"github.com/larivierec/cloudflare-ddns/pkg/metrics"
+	"github.com/larivierec/cloudflare-ddns/pkg/modes"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/spf13/pflag"
-)
-
-type applicationMode int
-
-const (
-	application applicationMode = iota
-	serverless
-	api
 )
 
 var (
@@ -41,64 +33,12 @@ var (
 	requestedCloudProvider string
 	zoneName               string
 	recordName             string
-	mode                   applicationMode
 	ticker                 time.Duration
 	createMissing          bool
 	recordTTL              int
 	cloudProviderObj       cloudprovider.Provider
+	appMode                modes.AppMode
 )
-
-type HealthHandler struct{}
-type RestartHandler struct{}
-type ExternalHandler struct{}
-
-func (handle *HealthHandler) alive(w http.ResponseWriter, r *http.Request) {
-	metrics.IncrementReqs(r)
-	w.WriteHeader(http.StatusOK)
-}
-
-func (handle *HealthHandler) ready(w http.ResponseWriter, r *http.Request) {
-	metrics.IncrementReqs(r)
-	w.WriteHeader(http.StatusOK)
-}
-
-func (handle *RestartHandler) do(w http.ResponseWriter, r *http.Request) {
-	metrics.IncrementReqs(r)
-	w.WriteHeader(http.StatusAccepted)
-	done <- syscall.SIGTERM
-}
-
-func (handle *ExternalHandler) get(w http.ResponseWriter, r *http.Request) {
-	metrics.IncrementReqs(r)
-	if cachedIpInfo == "" {
-		provider := *getProvider(ipProviderName)
-		cachedIpInfo, _ = ipprovider.GetCurrentIP(provider, metrics.IncrementProvider)
-	}
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(cachedIpInfo))
-}
-
-// external update, i.e. unifi gw
-func (handle *ExternalHandler) set(w http.ResponseWriter, r *http.Request) {
-	ip := r.URL.Query().Get("ip")
-	if ip == "" {
-		http.Error(w, "Missing 'ip' parameter", http.StatusBadRequest)
-		return
-	}
-	newRecord := &cloudprovider.Record{}
-	current, _ := cloudProviderObj.GetDNSRecord(zoneName, recordName)
-	cloudProviderObj.FillRecord(current, newRecord)
-	newRecord.Content = ip
-	if current == nil {
-		fmt.Printf("record %s, doesn't exist in cloud provider, creating.", recordName)
-		cloudProviderObj.InitializeRecord(zoneName, *newRecord)
-	}
-	responseRecord, _ := cloudProviderObj.UpdateDNSRecord(zoneName, *newRecord)
-	responseRecBytes, _ := json.Marshal(responseRecord)
-	metrics.IncrementReqs(r)
-	w.WriteHeader(http.StatusOK)
-	w.Write(responseRecBytes)
-}
 
 func Start(chosenMode string) {
 	modeSelector(chosenMode)
@@ -153,6 +93,33 @@ func Start(chosenMode string) {
 			log.Println(err)
 		}
 		recordChecker(rec)
+	}
+
+	mode := os.Getenv("APP_MODE") // Use an environment variable to specify the mode
+	if mode == "" {
+		mode = "application" // Default to application mode
+	}
+
+	appMode, err := modes.NewAppMode(mode)
+	if err != nil {
+		log.Fatalf("Failed to initialize mode: %v", err)
+	}
+
+	if err := appMode.Init(); err != nil {
+		log.Fatalf("Failed to initialize mode resources: %v", err)
+	}
+
+	if err := appMode.Start(); err != nil {
+		log.Fatalf("Failed to start mode: %v", err)
+	}
+
+	// Graceful shutdown
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+
+	if err := appMode.Stop(); err != nil {
+		log.Fatalf("Failed to stop mode: %v", err)
 	}
 }
 
@@ -317,14 +284,10 @@ func recordChecker(record *cloudprovider.Record) {
 }
 
 func modeSelector(chosenMode string) {
-	switch chosenMode {
-	case "api":
-		mode = api
-	case "serverless":
-		mode = serverless
-	case "application":
-		mode = application
-	default:
-		mode = application
+	mode := os.Getenv("APP_MODE") // Use an environment variable to specify the mode
+	if mode == "" {
+		mode = "application" // Default to application mode
 	}
+
+	appMode, _ = modes.NewAppMode(mode)
 }
