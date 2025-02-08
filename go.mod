@@ -7,7 +7,7 @@ toolchain go1.23.6
 require (
 	github.com/prometheus/client_golang v1.20.5
 	github.com/spf13/pflag v1.0.6
-	gotest.tools/v3 v3.5.1
+	gotest.tools/v3 v3.5.2
 )
 
 require (
