@@ -1,26 +1,28 @@
 {
-  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": [
-    "config:base",
-    "docker:enableMajor",
-    ":disableRateLimiting",
-    ":dependencyDashboard",
-    ":semanticCommits",
-    ":automergeDigest",
-    ":automergeMinor",
-    ":label(renovate/{{depName}})",
-    "helpers:pinGitHubActionDigests",
-    "security:openssf-scorecard"
+  $schema: 'https://docs.renovatebot.com/renovate-schema.json',
+  extends: [
+    'config:recommended',
+    'docker:enableMajor',
+    ':disableRateLimiting',
+    ':dependencyDashboard',
+    ':semanticCommits',
+    ':automergeDigest',
+    ':automergeMinor',
+    ':label(renovate/{{depName}})',
+    'helpers:pinGitHubActionDigests',
+    'security:openssf-scorecard',
   ],
-  "dependencyDashboard": true,
-  "dependencyDashboardTitle": "Renovate Dashboard 🤖",
-  "suppressNotifications": ["prIgnoreNotification"],
-  "rebaseWhen": "conflicted",
-  "assignees": [
-    "larivierec"
+  dependencyDashboard: true,
+  dependencyDashboardTitle: 'Renovate Dashboard 🤖',
+  suppressNotifications: [
+    'prIgnoreNotification',
   ],
-  "postUpdateOptions": [
-    "gomodTidy",
-    "gomodUpdateImportPaths"
-  ]
+  rebaseWhen: 'conflicted',
+  assignees: [
+    'larivierec',
+  ],
+  postUpdateOptions: [
+    'gomodTidy',
+    'gomodUpdateImportPaths',
+  ],
 }
