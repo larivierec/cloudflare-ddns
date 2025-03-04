@@ -5,7 +5,7 @@ go 1.23
 toolchain go1.24.0
 
 require (
-	github.com/prometheus/client_golang v1.21.0
+	github.com/prometheus/client_golang v1.21.1
 	github.com/spf13/pflag v1.0.6
 	gotest.tools/v3 v3.5.2
 )
