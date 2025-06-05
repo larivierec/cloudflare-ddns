@@ -2,7 +2,7 @@ module github.com/larivierec/cloudflare-ddns
 
 go 1.23
 
-toolchain go1.24.3
+toolchain go1.24.4
 
 require (
 	github.com/prometheus/client_golang v1.22.0
