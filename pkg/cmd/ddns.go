@@ -100,8 +100,7 @@ func (handle *ExternalHandler) set(w http.ResponseWriter, r *http.Request) {
 	w.Write(responseRecBytes)
 }
 
-func Start(chosenMode string) {
-	modeSelector(chosenMode)
+func Start() {
 	pflag.StringVar(&requestedCloudProvider, "cloud-provider", "cloudflare", "set this to the requested cloud provider. where your `A` record will be created")
 	pflag.StringVar(&zoneName, "zone-name", "", "set this to the cloudflare zone name")
 	pflag.StringVar(&recordName, "record-name", "", "set this to the cloudflare record in which you want to compare")
@@ -137,22 +136,12 @@ func Start(chosenMode string) {
 			}()
 		} else {
 			go func() {
-				for {
-					select {
-					case <-quit:
-						return
-					}
+				for range quit {
+					return
 				}
 			}()
 		}
 		startHttpServer()
-	} else {
-		log.Println("running in serverless mode")
-		rec, err := update(zoneName, recordName)
-		if err != nil {
-			log.Println(err)
-		}
-		recordChecker(rec)
 	}
 }
 
