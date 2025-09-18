@@ -26,7 +26,6 @@ type applicationMode int
 
 const (
 	application applicationMode = iota
-	serverless
 	api
 )
 
@@ -78,22 +77,44 @@ func (handle *ExternalHandler) get(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(cachedIpInfo))
 }
 
-// external update, i.e. unifi gw
 func (handle *ExternalHandler) set(w http.ResponseWriter, r *http.Request) {
 	ip := r.URL.Query().Get("ip")
 	if ip == "" {
 		http.Error(w, "Missing 'ip' parameter", http.StatusBadRequest)
 		return
 	}
-	newRecord := &cloudprovider.Record{}
-	current, _ := cloudProviderObj.GetDNSRecord(zoneName, recordName)
-	cloudProviderObj.FillRecord(current, newRecord)
-	newRecord.Content = ip
-	if current == nil {
-		fmt.Printf("record %s, doesn't exist in cloud provider, creating.", recordName)
-		cloudProviderObj.InitializeRecord(zoneName, *newRecord)
+
+	current, err := cloudProviderObj.GetDNSRecord(zoneName, recordName)
+	if err != nil {
+		if createMissing {
+			newRecord := &cloudprovider.Record{
+				Type:    "A",
+				Name:    recordName,
+				Content: ip,
+				TTL:     recordTTL,
+			}
+			responseRecord, err := cloudProviderObj.CreateDNSRecord(zoneName, newRecord)
+			if err != nil {
+				http.Error(w, fmt.Sprintf("Failed to create record: %v", err), http.StatusInternalServerError)
+				return
+			}
+			responseRecBytes, _ := json.Marshal(responseRecord)
+			w.WriteHeader(http.StatusCreated)
+			w.Write(responseRecBytes)
+			return
+		} else {
+			http.Error(w, fmt.Sprintf("Record not found: %v", err), http.StatusNotFound)
+			return
+		}
 	}
-	responseRecord, _ := cloudProviderObj.UpdateDNSRecord(zoneName, *newRecord)
+
+	current.Content = ip
+	responseRecord, err := cloudProviderObj.UpdateDNSRecord(zoneName, current)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to update record: %v", err), http.StatusInternalServerError)
+		return
+	}
+
 	responseRecBytes, _ := json.Marshal(responseRecord)
 	metrics.IncrementReqs(r)
 	w.WriteHeader(http.StatusOK)
@@ -102,8 +123,8 @@ func (handle *ExternalHandler) set(w http.ResponseWriter, r *http.Request) {
 
 func Start() {
 	pflag.StringVar(&requestedCloudProvider, "cloud-provider", "cloudflare", "set this to the requested cloud provider. where your `A` record will be created")
-	pflag.StringVar(&zoneName, "zone-name", "", "set this to the cloudflare zone name")
-	pflag.StringVar(&recordName, "record-name", "", "set this to the cloudflare record in which you want to compare")
+	pflag.StringVar(&zoneName, "zone-name", "", "set this to the zone name")
+	pflag.StringVar(&recordName, "record-name", "", "set this to the record name in which you want to compare")
 	pflag.StringVar(&ipProviderName, "provider", "ipify", "set this to the ip provider that will be queried for your public ip address")
 	pflag.DurationVar(&ticker, "ticker", time.Duration(3*time.Minute), "set this to the desired time to check your WAN IP against the IP Providers")
 	pflag.BoolVar(&createMissing, "create-missing", false, "create missing ddns record for updating")
@@ -114,35 +135,28 @@ func Start() {
 	createCloudProvider()
 	initialize()
 
-	if mode != serverless {
-		metrics.InitMetrics()
+	metrics.InitMetrics()
 
-		if mode == application {
-			ticker := time.NewTicker(ticker)
-			go func() {
-				for {
-					select {
-					case <-ticker.C:
-						rec, err := update(zoneName, recordName)
-						if err != nil {
-							log.Println(err)
-						}
-						recordChecker(rec)
-					case <-quit:
-						ticker.Stop()
-						return
+	if mode == application {
+		ticker := time.NewTicker(ticker)
+		go func() {
+			for {
+				select {
+				case <-ticker.C:
+					rec, err := update(zoneName, recordName)
+					if err != nil {
+						log.Println(err)
 					}
-				}
-			}()
-		} else {
-			go func() {
-				for range quit {
+					recordChecker(rec)
+				case <-quit:
+					ticker.Stop()
 					return
 				}
-			}()
-		}
-		startHttpServer()
+			}
+		}()
 	}
+
+	startHttpServer()
 }
 
 func startHttpServer() {
@@ -183,48 +197,32 @@ func startHttpServer() {
 	stopServer()
 }
 
-func StartServerless(w http.ResponseWriter, r *http.Request) {
-	createProvider()
-	createCloudProvider()
-	initialize()
-	zoneName := os.Getenv("ZONE_NAME")
-	recordName := os.Getenv("RECORD_NAME")
-
-	rec, err := update(zoneName, recordName)
-	if err != nil {
-		log.Printf("DNS update failed: %v", err)
-		http.Error(w, "DNS update failed", http.StatusInternalServerError)
-		return
-	}
-
-	recordChecker(rec)
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("DNS updated successfully"))
-}
-
 func update(zoneName string, recordName string) (*cloudprovider.Record, error) {
-	var rec = &cloudprovider.Record{}
 	result, err := ipprovider.GetCurrentIP(*getProvider(ipProviderName), metrics.IncrementProvider)
 	if err != nil {
 		return nil, fmt.Errorf("unable to get provider ip, skipping update. error: %v", err)
 	}
+
 	if cachedIpInfo != result {
 		cachedIpInfo = result
+
 		record, err := cloudProviderObj.GetDNSRecord(zoneName, recordName)
 		if err != nil {
 			return nil, fmt.Errorf("unable to retrieve record %s in zone %s. err: %s", recordName, zoneName, err)
 		}
-		cloudProviderObj.FillRecord(record, rec)
-		if cachedIpInfo != record["content"] {
-			_, err := cloudProviderObj.UpdateDNSRecord(zoneName, *rec)
+
+		if cachedIpInfo != record.Content {
+			record.Content = cachedIpInfo
+			updatedRecord, err := cloudProviderObj.UpdateDNSRecord(zoneName, record)
 			if err != nil {
 				return nil, fmt.Errorf("unable to update record %s. err : %s", recordName, err)
 			}
+			return updatedRecord, nil
 		}
 	} else {
 		log.Println("IPs are the same")
 	}
-	return rec, nil
+	return nil, nil
 }
 
 func stopServer() {
@@ -274,8 +272,9 @@ func initialize() {
 	if err != nil {
 		log.Fatalf("unable to initialize retrieve ip for init, aborting.")
 	}
-	providerRecord, _ := cloudProviderObj.GetDNSRecord(zoneName, recordName)
-	if createMissing && providerRecord == nil {
+
+	_, err = cloudProviderObj.GetDNSRecord(zoneName, recordName)
+	if err != nil && createMissing {
 		log.Printf("creating %s, in zone %s", recordName, zoneName)
 		rec := &cloudprovider.Record{
 			Type:    "A",
@@ -283,7 +282,10 @@ func initialize() {
 			Name:    recordName,
 			Content: result,
 		}
-		cloudProviderObj.InitializeRecord(zoneName, *rec)
+		_, err := cloudProviderObj.CreateDNSRecord(zoneName, rec)
+		if err != nil {
+			log.Fatalf("Failed to create DNS record: %v", err)
+		}
 	}
 }
 
@@ -302,18 +304,5 @@ func recordChecker(record *cloudprovider.Record) {
 		} else {
 			log.Println("record is the same, ignoring.")
 		}
-	}
-}
-
-func modeSelector(chosenMode string) {
-	switch chosenMode {
-	case "api":
-		mode = api
-	case "serverless":
-		mode = serverless
-	case "application":
-		mode = application
-	default:
-		mode = application
 	}
 }

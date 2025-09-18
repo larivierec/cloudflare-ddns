@@ -9,9 +9,8 @@ type Record struct {
 }
 
 type Provider interface {
-	InitializeRecord(zone string, record Record) (map[string]string, error)
-	GetDNSRecord(zoneName string, recordName string) (map[string]string, error)
-	UpdateDNSRecord(zone string, record Record) (map[string]string, error)
-	ListDNSRecordsFiltered(zoneName string, recordName string) (map[string]string, error)
-	FillRecord(generic map[string]string, record *Record)
+	GetDNSRecord(zone, recordName string) (*Record, error)
+	CreateDNSRecord(zone string, record *Record) (*Record, error)
+	UpdateDNSRecord(zone string, record *Record) (*Record, error)
+	DeleteDNSRecord(zone, recordID string) error
 }
