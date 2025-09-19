@@ -1,0 +1,117 @@
+stages:
+  - build
+  - manifest
+  - security
+  - release
+
+variables:
+  IMAGE_NAME: $CI_REGISTRY_IMAGE
+  STORAGE_DRIVER: overlay
+
+build:amd64:
+  stage: build
+  image: quay.io/buildah/stable:latest
+  tags:
+    - saas-linux-small-amd64
+  before_script:
+    - buildah login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+  script:
+    - |
+      buildah build \
+        --platform linux/amd64 \
+        --build-arg TARGETOS=linux \
+        --build-arg TARGETARCH=amd64 \
+        --build-arg VERSION=${CI_COMMIT_TAG:-$CI_COMMIT_SHORT_SHA} \
+        --build-arg REVISION=$CI_COMMIT_SHA \
+        --tag $IMAGE_NAME:$CI_COMMIT_SHA-amd64 \
+        --file Dockerfile \
+        .
+    - buildah push $IMAGE_NAME:$CI_COMMIT_SHA-amd64
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_TAG
+
+build:arm64:
+  stage: build
+  image: quay.io/buildah/stable:latest
+  tags:
+    - saas-linux-small-arm64
+  before_script:
+    - buildah login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+  script:
+    - |
+      buildah build \
+        --platform linux/arm64 \
+        --build-arg TARGETOS=linux \
+        --build-arg TARGETARCH=arm64 \
+        --build-arg VERSION=${CI_COMMIT_TAG:-$CI_COMMIT_SHORT_SHA} \
+        --build-arg REVISION=$CI_COMMIT_SHA \
+        --tag $IMAGE_NAME:$CI_COMMIT_SHA-arm64 \
+        --file Dockerfile \
+        .
+    - buildah push $IMAGE_NAME:$CI_COMMIT_SHA-arm64
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_TAG
+
+manifest:
+  stage: manifest
+  image: quay.io/buildah/stable:latest
+  before_script:
+    - buildah login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+  script:
+    - buildah manifest create $IMAGE_NAME:$CI_COMMIT_SHA
+    - buildah manifest add $IMAGE_NAME:$CI_COMMIT_SHA $IMAGE_NAME:$CI_COMMIT_SHA-amd64
+    - buildah manifest add $IMAGE_NAME:$CI_COMMIT_SHA $IMAGE_NAME:$CI_COMMIT_SHA-arm64
+    - buildah manifest push --all $IMAGE_NAME:$CI_COMMIT_SHA docker://$IMAGE_NAME:$CI_COMMIT_SHA
+  dependencies:
+    - build:amd64
+    - build:arm64
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_TAG
+
+security_scan:
+  stage: security
+  image:
+    name: aquasec/trivy:latest
+    entrypoint: [""]
+  script:
+    - trivy image --exit-code 1 --severity CRITICAL $IMAGE_NAME:$CI_COMMIT_SHA-amd64
+    - trivy image --exit-code 1 --severity CRITICAL $IMAGE_NAME:$CI_COMMIT_SHA-arm64
+  dependencies:
+    - manifest
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_TAG
+
+release:
+  stage: release
+  image:
+    name: quay.io/skopeo/stable:latest
+    entrypoint: [""]
+  before_script:
+    - skopeo login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+  script:
+    - |
+      if [ "$CI_COMMIT_TAG" ]; then
+        # For tags, create version-specific tags
+        skopeo copy docker://$IMAGE_NAME:$CI_COMMIT_SHA docker://$IMAGE_NAME:$CI_COMMIT_TAG
+        skopeo copy docker://$IMAGE_NAME:$CI_COMMIT_SHA docker://$IMAGE_NAME:latest
+        echo "Tagged as: $IMAGE_NAME:$CI_COMMIT_TAG and $IMAGE_NAME:latest"
+      elif [ "$CI_COMMIT_BRANCH" == "$CI_DEFAULT_BRANCH" ]; then
+        # For main branch
+        skopeo copy docker://$IMAGE_NAME:$CI_COMMIT_SHA docker://$IMAGE_NAME:$CI_COMMIT_BRANCH
+        echo "Tagged as: $IMAGE_NAME:$CI_COMMIT_BRANCH"
+      else
+        # For other branches - already tagged with commit SHA
+        echo "Branch build complete: $IMAGE_NAME:$CI_COMMIT_SHA"
+      fi
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_TAG
+  dependencies: []

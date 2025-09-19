@@ -23,6 +23,7 @@ type Configuration struct {
 	ApiKey          string
 	AccountEmail    string
 	CloudflareToken string
+	DefaultProxied  bool
 }
 
 type Zone struct {
@@ -35,6 +36,7 @@ func NewCloudflareProvider() *CloudflareProvider {
 		ApiKey:          os.Getenv("API_KEY"),
 		AccountEmail:    os.Getenv("ACCOUNT_EMAIL"),
 		CloudflareToken: os.Getenv("ACCOUNT_TOKEN"),
+		DefaultProxied:  true,
 	}
 	return &CloudflareProvider{config: config}
 }
@@ -76,7 +78,7 @@ func (c *CloudflareProvider) ListDNSRecordsFiltered(zoneName string, recordName 
 	return nil, fmt.Errorf("[ListDNSRecordsFiltered] record %s not found", recordName)
 }
 
-func (c *CloudflareProvider) UpdateDNSRecord(zone string, rec cloudprovider.Record) (map[string]string, error) {
+func (c *CloudflareProvider) UpdateDNSRecord(zone string, rec *cloudprovider.Record) (*cloudprovider.Record, error) {
 	zoneID, err := c.getZoneID(zone)
 	if err != nil {
 		return nil, err
@@ -86,7 +88,8 @@ func (c *CloudflareProvider) UpdateDNSRecord(zone string, rec cloudprovider.Reco
 		"type":    rec.Type,
 		"name":    rec.Name,
 		"content": rec.Content,
-		"proxied": true,
+		"ttl":     rec.TTL,
+		"proxied": c.config.DefaultProxied,
 	}
 
 	jsonData, _ := json.Marshal(data)
@@ -112,10 +115,10 @@ func (c *CloudflareProvider) UpdateDNSRecord(zone string, rec cloudprovider.Reco
 	}
 
 	log.Printf("[UpdateDNSRecord] record %s updated successfully\n", result.Result["name"].(string))
-	return c.convertToGenericMap(result.Result), nil
+	return c.mapToRecord(result.Result), nil
 }
 
-func (c *CloudflareProvider) GetDNSRecord(zone string, recordName string) (map[string]string, error) {
+func (c *CloudflareProvider) GetDNSRecord(zone string, recordName string) (*cloudprovider.Record, error) {
 	zoneID, err := c.getZoneID(zone)
 	if err != nil {
 		return nil, err
@@ -144,24 +147,25 @@ func (c *CloudflareProvider) GetDNSRecord(zone string, recordName string) (map[s
 
 	for _, record := range result.Result {
 		if strings.EqualFold(record["name"].(string), recordName) {
-			return c.convertToGenericMap(record), nil
+			return c.mapToRecord(record), nil
 		}
 	}
 
 	return nil, fmt.Errorf("[GetDNSRecord] record %s not found", recordName)
 }
 
-func (c *CloudflareProvider) InitializeRecord(zone string, rec cloudprovider.Record) (map[string]string, error) {
+func (c *CloudflareProvider) CreateDNSRecord(zone string, rec *cloudprovider.Record) (*cloudprovider.Record, error) {
 	zoneID, err := c.getZoneID(zone)
 	if err != nil {
 		return nil, err
 	}
-	url := fmt.Sprintf("%s/zones/%s/dns_records?type=%s", cloudflareAPIUrl, zoneID, rec.Type)
+	url := fmt.Sprintf("%s/zones/%s/dns_records", cloudflareAPIUrl, zoneID)
 	data := map[string]interface{}{
 		"type":    rec.Type,
 		"name":    rec.Name,
 		"content": rec.Content,
-		"proxied": true,
+		"ttl":     rec.TTL,
+		"proxied": c.config.DefaultProxied,
 	}
 
 	jsonData, _ := json.Marshal(data)
@@ -186,8 +190,32 @@ func (c *CloudflareProvider) InitializeRecord(zone string, rec cloudprovider.Rec
 		return nil, err
 	}
 
-	log.Printf("[CreateDNSRecord] record %s created successfully\n", result.Result["name"].(string))
-	return c.convertToGenericMap(result.Result), nil
+	log.Printf("DNS record %s created successfully", result.Result["name"].(string))
+	return c.mapToRecord(result.Result), nil
+}
+
+func (c *CloudflareProvider) DeleteDNSRecord(zone, recordID string) error {
+	zoneID, err := c.getZoneID(zone)
+	if err != nil {
+		return err
+	}
+	url := fmt.Sprintf("%s/zones/%s/dns_records/%s", cloudflareAPIUrl, zoneID, recordID)
+	req, _ := http.NewRequest("DELETE", url, nil)
+	c.setHeaders(req)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("error deleting DNS record: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("failed to delete DNS record: %s", string(body))
+	}
+
+	log.Printf("DNS record %s deleted successfully", recordID)
+	return nil
 }
 
 func (c *CloudflareProvider) setHeaders(req *http.Request) {
@@ -247,9 +275,17 @@ func (c *CloudflareProvider) convertToGenericMap(record map[string]interface{}) 
 	return nil
 }
 
-func (c *CloudflareProvider) FillRecord(generic map[string]string, record *cloudprovider.Record) {
-	record.Content = generic["content"]
-	record.ID = generic["id"]
-	record.Name = generic["name"]
-	record.Type = generic["type"]
+func (c *CloudflareProvider) mapToRecord(data map[string]interface{}) *cloudprovider.Record {
+	record := &cloudprovider.Record{
+		ID:      fmt.Sprintf("%v", data["id"]),
+		Type:    fmt.Sprintf("%v", data["type"]),
+		Name:    fmt.Sprintf("%v", data["name"]),
+		Content: fmt.Sprintf("%v", data["content"]),
+	}
+
+	if ttl, ok := data["ttl"].(float64); ok {
+		record.TTL = int(ttl)
+	}
+
+	return record
 }

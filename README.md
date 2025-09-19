@@ -22,8 +22,6 @@ OR
 
 ## Program Arguments
 
-### Container Mode
-
 1. `--zone-name`: The name of the zone you wish to modify.
 2. `--record-name`: The name of the record you wish to modify inside your zone.
 3. `--provider`: The provider you wish to use can be: `ipify`, `icanhazip`, `icanhaz`. Anything other than these three will be considered as "random"
@@ -31,16 +29,6 @@ OR
 5. `--create-missing`: This will create the missing DNS record in the target if set to true, it is `false` by default.
 6. `--record-ttl`: This will set the DNS record to this TTL. `300` by default.
 
-### Serverless Mode
-
-Does not use `pflag` library, set the environment variables above for Cloudflare and these
-
-```text
-ZONE_NAME=<your name name>
-RECORD_NAME=<your record name>
-```
-
 ## Example
 
-[Helm Release - Container Example](https://github.com/larivierec/home-cluster/blob/main/kubernetes/main/apps/networking/ddns/app/helm-release.yaml)
-[Helm Release - Serverless Example](https://github.com/larivierec/home-cluster/blob/main/kubernetes/main/apps/serverless/fission/functions/ddns/specs/function.yaml#L31)
+[Helm Release Example](https://github.com/larivierec/home-cluster/blob/main/kubernetes/main/apps/networking/ddns/app/helm-release.yaml)
