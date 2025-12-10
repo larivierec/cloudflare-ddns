@@ -44,6 +44,7 @@ var (
 	ticker                 time.Duration
 	createMissing          bool
 	recordTTL              int
+	recordProxied          bool
 	cloudProviderObj       cloudprovider.Provider
 )
 
@@ -92,6 +93,7 @@ func (handle *ExternalHandler) set(w http.ResponseWriter, r *http.Request) {
 				Name:    recordName,
 				Content: ip,
 				TTL:     recordTTL,
+				Proxied: recordProxied,
 			}
 			responseRecord, err := cloudProviderObj.CreateDNSRecord(zoneName, newRecord)
 			if err != nil {
@@ -109,6 +111,7 @@ func (handle *ExternalHandler) set(w http.ResponseWriter, r *http.Request) {
 	}
 
 	current.Content = ip
+	current.Proxied = recordProxied
 	responseRecord, err := cloudProviderObj.UpdateDNSRecord(zoneName, current)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to update record: %v", err), http.StatusInternalServerError)
@@ -129,6 +132,7 @@ func Start() {
 	pflag.DurationVar(&ticker, "ticker", time.Duration(3*time.Minute), "set this to the desired time to check your WAN IP against the IP Providers")
 	pflag.BoolVar(&createMissing, "create-missing", false, "create missing ddns record for updating")
 	pflag.IntVar(&recordTTL, "record-ttl", 300, "set this to the value of the requested TTL")
+	pflag.BoolVar(&recordProxied, "proxied", true, "proxy the record through Cloudflare (lookup returns Cloudflare's ips)")
 	pflag.Parse()
 
 	createProvider()
@@ -213,6 +217,7 @@ func update(zoneName string, recordName string) (*cloudprovider.Record, error) {
 
 		if cachedIpInfo != record.Content {
 			record.Content = cachedIpInfo
+			record.Proxied = recordProxied
 			updatedRecord, err := cloudProviderObj.UpdateDNSRecord(zoneName, record)
 			if err != nil {
 				return nil, fmt.Errorf("unable to update record %s. err : %s", recordName, err)
@@ -281,6 +286,7 @@ func initialize() {
 			TTL:     recordTTL,
 			Name:    recordName,
 			Content: result,
+			Proxied: recordProxied,
 		}
 		_, err := cloudProviderObj.CreateDNSRecord(zoneName, rec)
 		if err != nil {

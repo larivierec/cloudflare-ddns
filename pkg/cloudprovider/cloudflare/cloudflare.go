@@ -23,7 +23,6 @@ type Configuration struct {
 	ApiKey          string
 	AccountEmail    string
 	CloudflareToken string
-	DefaultProxied  bool
 }
 
 type Zone struct {
@@ -36,7 +35,6 @@ func NewCloudflareProvider() *CloudflareProvider {
 		ApiKey:          os.Getenv("API_KEY"),
 		AccountEmail:    os.Getenv("ACCOUNT_EMAIL"),
 		CloudflareToken: os.Getenv("ACCOUNT_TOKEN"),
-		DefaultProxied:  true,
 	}
 	return &CloudflareProvider{config: config}
 }
@@ -89,7 +87,7 @@ func (c *CloudflareProvider) UpdateDNSRecord(zone string, rec *cloudprovider.Rec
 		"name":    rec.Name,
 		"content": rec.Content,
 		"ttl":     rec.TTL,
-		"proxied": c.config.DefaultProxied,
+		"proxied": rec.Proxied,
 	}
 
 	jsonData, _ := json.Marshal(data)
@@ -165,7 +163,7 @@ func (c *CloudflareProvider) CreateDNSRecord(zone string, rec *cloudprovider.Rec
 		"name":    rec.Name,
 		"content": rec.Content,
 		"ttl":     rec.TTL,
-		"proxied": c.config.DefaultProxied,
+		"proxied": rec.Proxied,
 	}
 
 	jsonData, _ := json.Marshal(data)
@@ -285,6 +283,10 @@ func (c *CloudflareProvider) mapToRecord(data map[string]interface{}) *cloudprov
 
 	if ttl, ok := data["ttl"].(float64); ok {
 		record.TTL = int(ttl)
+	}
+	
+	if proxied, ok := data["proxied"].(bool); ok {
+		record.Proxied = proxied
 	}
 
 	return record
