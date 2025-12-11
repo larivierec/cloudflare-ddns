@@ -34,6 +34,7 @@ func TestRecord_ValidatesFields(t *testing.T) {
 		Name:    "test.example.com",
 		Content: "192.168.1.1",
 		TTL:     300,
+		Proxied: true,
 	}
 
 	assert.Equal(t, "test-id", record.ID)
@@ -41,6 +42,7 @@ func TestRecord_ValidatesFields(t *testing.T) {
 	assert.Equal(t, "test.example.com", record.Name)
 	assert.Equal(t, "192.168.1.1", record.Content)
 	assert.Equal(t, 300, record.TTL)
+	assert.Equal(t, true, record.Proxied)
 }
 
 func TestInterface_MethodSignatures(t *testing.T) {
@@ -54,6 +56,7 @@ func TestInterface_MethodSignatures(t *testing.T) {
 		Name:    "test.example.com",
 		Content: "192.168.1.1",
 		TTL:     300,
+		Proxied: true,
 	}
 
 	_, err = provider.CreateDNSRecord("example.com", testRecord)

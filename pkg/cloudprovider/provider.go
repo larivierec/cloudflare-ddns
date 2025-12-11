@@ -6,6 +6,7 @@ type Record struct {
 	Name    string
 	Content string
 	TTL     int
+	Proxied bool
 }
 
 type Provider interface {

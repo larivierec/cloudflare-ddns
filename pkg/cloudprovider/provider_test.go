@@ -25,6 +25,7 @@ func TestRecord_StructValidation(t *testing.T) {
 		Name:    "example.com",
 		Content: "192.168.1.1",
 		TTL:     300,
+		Proxied: true,
 	}
 
 	var _ string = record.ID
@@ -32,12 +33,14 @@ func TestRecord_StructValidation(t *testing.T) {
 	var _ string = record.Name
 	var _ string = record.Content
 	var _ int = record.TTL
+	var _ bool = record.Proxied
 
 	assert.Equal(t, "string-id", record.ID)
 	assert.Equal(t, "A", record.Type)
 	assert.Equal(t, "example.com", record.Name)
 	assert.Equal(t, "192.168.1.1", record.Content)
 	assert.Equal(t, 300, record.TTL)
+	assert.Equal(t, true, record.Proxied)
 }
 
 func TestProvider_PolymorphicUsage(t *testing.T) {

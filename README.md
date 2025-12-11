@@ -28,6 +28,7 @@ OR
 4. `--ticker`: Directly uses Golang's implementation of `time.Duration`. Default is "3m", you can set this to whatever you'd like.
 5. `--create-missing`: This will create the missing DNS record in the target if set to true, it is `false` by default.
 6. `--record-ttl`: This will set the DNS record to this TTL. `300` by default.
+7. `--proxied`: Boolean whether the record in cloudflare should be set to `proxy`, if true a lookup will return Cloudflare ips. `true` by default.
 
 ## Example
 
