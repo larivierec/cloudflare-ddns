@@ -49,7 +49,7 @@ jobs:
           load: true
       - name: Scan image
         id: scan
-        uses: anchore/scan-action@62b74fb7bb810d2c45b1865f47a77655621862a5 # v7
+        uses: anchore/scan-action@0d444ed77d83ee2ba7f5ced0d90d640a1281d762 # v7
         with:
           image: localbuild/cloudflare-ddns:latest
           fail-build: true
@@ -60,7 +60,7 @@ jobs:
           format: spdx-json
           output-file: "${{ github.event.repository.name }}-sbom.spdx.json"
       - name: Scan SBOM
-        uses: anchore/scan-action@62b74fb7bb810d2c45b1865f47a77655621862a5 # v7
+        uses: anchore/scan-action@0d444ed77d83ee2ba7f5ced0d90d640a1281d762 # v7
         with:
           sbom: "${{ github.event.repository.name }}-sbom.spdx.json"
       - name: Upload Anchore scan SARIF report
