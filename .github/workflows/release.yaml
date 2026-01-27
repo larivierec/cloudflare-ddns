@@ -56,7 +56,7 @@ jobs:
           fail-build: true
           severity-cutoff: critical
       - name: Create SBOM
-        uses: anchore/sbom-action@62ad5284b8ced813296287a0b63906cb364b73ee # v0
+        uses: anchore/sbom-action@deef08a0db64bfad603422135db61477b16cef56 # v0
         with:
           format: spdx-json
           output-file: "${{ github.event.repository.name }}-sbom.spdx.json"
